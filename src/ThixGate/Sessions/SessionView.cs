@@ -29,7 +29,7 @@ namespace ThixGate.Sessions;
 /// </summary>
 public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
 {
-    private readonly RemoteConnection _connection;
+    private RemoteConnection _connection;
     private readonly Image _image = new() { Stretch = Stretch.Uniform, Focusable = true };
     private readonly Border _surface = new() { ClipToBounds = true, Focusable = true };
     private readonly TextBlock _state = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
@@ -61,9 +61,9 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
     {
         _connection = connection;
         this.Use(BackgroundProperty, "Mat.Surface");
-        BuildStatus();
+        BuildDisplay();
 
-        _state.Text = $"{connection.Name} · {Protocols.Address(connection)}";
+        _state.Text = Protocols.Address(connection);
         _state.Themed("MatText.Muted");
         _overlay.Themed("MatText.Muted");
         _reconnect.IsVisible = false;
@@ -80,10 +80,12 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
         IsDocked = false;
         AutomationProperties.SetName(_surface, $"Bildschirm von {connection.Name}");
 
-        var bar = new DockPanel { Margin = new Thickness(12, 8), LastChildFill = true };
-        bar.Children.Add(Ui.Docked(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _status, _reconnect, _secureAttention, _fullScreen, _dock, _disconnect } }, Dock.Right));
-        bar.Children.Add(Ui.Docked(new Border { Margin = new Thickness(0, 0, 12, 0), Child = _pill }, Dock.Left));
-        bar.Children.Add(_state);
+        // The bar above the session (Matgate's session toolbar): state, name and the way it goes; Anzeige, Ton, Strg+Alt+Entf, Vollbild,
+        // Abdocken, Trennen. Below it the status bar (SessionView.Status).
+        var bar = new DockPanel { Margin = new Thickness(12, 7), LastChildFill = true };
+        bar.Children.Add(Ui.Docked(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _reconnect, _display, _sound, _secureAttention, _fullScreen, _dock, _disconnect } }, Dock.Right));
+        bar.Children.Add(Ui.Docked(new Border { Margin = new Thickness(0, 0, 12, 0), Child = _pill, VerticalAlignment = VerticalAlignment.Center }, Dock.Left));
+        bar.Children.Add(BuildTitle());
 
         _surface.Background = Brushes.Black;
         if (connection.Protocol == ConnectionProtocol.Ssh)
@@ -92,12 +94,12 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
             _terminal = new TerminalView();
             _terminal.Input += bytes => _ssh?.Send(bytes);
             _terminal.GridChanged += (columns, rows) => _ssh?.Resize(columns, rows);
-            _terminal.Buffer.TitleChanged += title => Ui.Post(() => _state.Text = title.Length > 0 ? $"{connection.Name} · {title}" : $"{connection.Name} · {Protocols.Address(connection)}");
+            _terminal.Buffer.TitleChanged += title => Ui.Post(() => _state.Text = title.Length > 0 ? title : Protocols.Address(connection));
             _surface.Child = new Panel { Children = { _terminal, _overlay, BuildFullBar() } };
         }
         else if (connection.Protocol.IsScreen())
         {
-            _surface.Child = new Panel { Children = { _image, _overlay, BuildFullBar() } };
+            _surface.Child = new Panel { Children = { _image, _perf, _overlay, BuildFullBar() } };
         }
         else
         {
@@ -111,22 +113,27 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
             _surface.Use(Border.BackgroundProperty, "Mat.Surface");
             if (_panel is WebPanel web)
             {
-                web.TitleChanged += title => _state.Text = title.Length > 0 ? $"{connection.Name} · {title}" : $"{connection.Name} · {Protocols.Address(connection)}";
+                web.TitleChanged += title => _state.Text = title.Length > 0 ? title : Protocols.Address(connection);
             }
 
             _surface.Child = new Panel { Children = { _panel.View, _overlay, BuildFullBar() } };
         }
 
+        // What only a remote desktop has: Anzeige, Ton.
+        _display.IsVisible = IsScreen;
+        _sound.IsVisible = _sound.IsVisible && IsScreen;
+
         var root = new DockPanel();
-        _barHost = new Border { Child = bar }.Use(Border.BackgroundProperty, "Mat.SurfaceRaised");
+        _barHost = new Border { Child = bar, BorderThickness = new Thickness(0, 0, 0, 1) }.Use(Border.BackgroundProperty, "Mat.Surface").Use(Border.BorderBrushProperty, "Mat.Border");
         root.Children.Add(Ui.Docked(_barHost, Dock.Top));
+        root.Children.Add(Ui.Docked(BuildStatusBar(), Dock.Bottom));
         root.Children.Add(_surface);
         Content = root;
 
         _resizeTimer.Tick += (_, _) =>
         {
             _resizeTimer.Stop();
-            if (_isConnected && _connection.Resolution == "auto")
+            if (_isConnected && _resolution == "auto")
             {
                 _backend?.Resize(_wantedWidth, _wantedHeight);
             }
@@ -178,6 +185,7 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
         _surface.GotFocus += (_, _) => _ = SyncClipboardAsync();
         DetachedFromVisualTree += (_, e) =>
         {
+            SettingsService.Changed -= SettingsChanged;
             if (e.Root is Window window)
             {
                 window.Activated -= WindowActivated;
@@ -185,6 +193,8 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
         };
         AttachedToVisualTree += (_, e) =>
         {
+            SettingsService.Changed += SettingsChanged;
+            ApplyOverlaySettings();
             if (e.Root is Window window)
             {
                 window.Activated += WindowActivated;
@@ -297,13 +307,14 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
             await backend.ConnectAsync(token);
             LibraryService.MarkUsed(_connection.Id);
             _isConnected = true;
+            backend.SoundEnabled(_soundOn);
 
             // The first picture is whatever the server drew while signing in: shown at once, not only after the next change.
             RequestDraw();
             Ui.Post(() =>
             {
                 ShowState("Verbunden", "check", Tone.Success, null);
-                StartStatus(QualityText(_connection.Quality));
+                StartStatus();
                 _surface.Focus();
                 _ = SyncClipboardAsync();
             });
@@ -470,6 +481,7 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
     {
         _isConnected = false;
         StopStatus();
+        _audio.Stop();
         _fetching?.Cancel();
         ShowState("Getrennt", "x-circle", Tone.Muted, message);
         _reconnect.IsVisible = true;
@@ -640,13 +652,13 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
     {
         if (state == "clipfailed")
         {
-            Ui.Post(() => _state.Text = $"{_connection.Name} · Die Zwischenablage kam nicht in der Sitzung an.");
+            Ui.Post(() => _state.Text = $"Die Zwischenablage kam nicht in der Sitzung an.");
             return;
         }
 
         if (message is { Length: > 0 })
         {
-            Ui.Post(() => _state.Text = $"{_connection.Name} · {message}");
+            Ui.Post(() => _state.Text = $"{message}");
         }
     }
 
@@ -675,12 +687,14 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
         return new ScreenCredentials(answer.UserName, answer.Password, answer.Domain);
     }
 
-    void IScreenHost.Audio(ReadOnlySpan<byte> pcm, int rate, int channels)
-    {
-        // Sound plays with the next step (an audio output of the platform); the engine sends none while it is off.
-    }
+    void IScreenHost.Audio(ReadOnlySpan<byte> pcm, int rate, int channels) => PlayAudio(pcm, rate, channels);
 
-    (int Width, int Height) IScreenHost.WantedSize() => _connection.Resolution == "auto" ? (_wantedWidth, _wantedHeight) : (0, 0);
+    (int Width, int Height) IScreenHost.WantedSize() => _resolution switch
+    {
+        "auto" => (_wantedWidth, _wantedHeight),
+        _ when _resolution.Split('x') is [var w, var h] && int.TryParse(w, out var width) && int.TryParse(h, out var height) => (width, height),
+        _ => (0, 0),
+    };
 
     void IScreenHost.Log(string message) => Log.Info($"Session {_connection.Id}: {message}");
 
@@ -720,15 +734,6 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
 
         return message;
     }
-
-    private static string QualityText(SessionQuality quality) => quality switch
-    {
-        SessionQuality.Auto => "automatisch",
-        SessionQuality.Medium => "mittel",
-        SessionQuality.Low => "niedrig",
-        SessionQuality.Fast => "schnellste Reaktion",
-        _ => "",
-    };
 
     /// <summary>The pointer in the picture's pixels (the picture is fitted into the window, centred).</summary>
     private void Pointer(PointerEventArgs e)

@@ -38,7 +38,7 @@ public static class SampleData
         MatgateService.Save(new MatgateAccount { Id = MatgateAccountId, Name = "Matgate Büro", ServerUrl = "https://matgate.example.com", UserName = "anna" });
         SettingsService.UpdateMatgateAccounts(list => [.. list.Select(account => account with
         {
-            LastChecked = now.AddHours(-2), LastVersion = "0.56.0", DeviceId = MatgateDeviceId, DisplayName = "Anna Schmidt", LibraryFetched = now.AddMinutes(-4),
+            LastChecked = now.AddHours(-2), LastVersion = "0.60.0", DeviceId = MatgateDeviceId, DisplayName = "Anna Schmidt", LibraryFetched = now.AddMinutes(-4),
         })]);
         MatgateStore.Write(MatgateAccountId, new MatgateLibrary
         {

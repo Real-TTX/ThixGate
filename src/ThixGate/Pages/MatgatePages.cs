@@ -150,6 +150,12 @@ public sealed class MatgatePage : UserControl
         }
 
         details.Add(through == 1 ? "1 eigene darüber" : $"{through} eigene darüber");
+
+        // Files, websites and databases come in Matgate's library from 0.59 on: an older Matgate lists only remote desktops and terminals.
+        if (Version.TryParse(account.LastVersion.Split('-')[0], out var version) && version < new Version(0, 59))
+        {
+            details.Add($"Matgate {account.LastVersion}: Dateien, Websites und Datenbanken erst ab 0.59 – bitte Matgate aktualisieren");
+        }
         var text = new StackPanel
         {
             Margin = new Thickness(16, 0),

@@ -49,7 +49,13 @@
                   <ComboBoxItem Content="Alle Monitore" />
                 </ComboBox>
               </mat:MatSettingRow>
-              <mat:MatSettingRow Title="Status der Verbindung zeigen" Description="Latenz, Bilder pro Sekunde und Datenrate über dem Remote-Desktop; ein Klick zeigt die letzte Minute als Graph.">
+              <mat:MatSettingRow Title="Leiste im Vollbild" Description="Am oberen Rand: die Leiste wartet über dem Bildschirmrand (ein kleiner Griff zeigt, wo) und kommt, wenn der Zeiger an den Rand geht. Immer: sie bleibt stehen.">
+                <ComboBox x:Name="FullBarChoice" MinWidth="220" AutomationProperties.Name="Leiste im Vollbild">
+                  <ComboBoxItem Content="Am oberen Rand" />
+                  <ComboBoxItem Content="Immer sichtbar" />
+                </ComboBox>
+              </mat:MatSettingRow>
+              <mat:MatSettingRow Title="Statusleiste zeigen" Description="Unter dem Remote-Desktop wie in Matgate: Bilder pro Sekunde, Latenz und Datenrate mit der letzten Minute als kleinem Graph; ein Klick zeigt alle Werte und den Graph groß.">
                 <ToggleSwitch x:Name="StatusSwitch" OnContent="" OffContent="" AutomationProperties.Name="Status der Verbindung zeigen" />
               </mat:MatSettingRow>
               <mat:MatSettingRow Title="SSH im Terminal des Systems" Description="Aus: SSH öffnet im Terminal von ThixGate (als Tab oder Fenster wie oben). An: im Terminal des Systems mit OpenSSH.">

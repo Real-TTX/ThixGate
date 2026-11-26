@@ -15,7 +15,7 @@ namespace ThixGate.Core.Business;
 /// session window does not know the difference. The WebSocket (<c>/app/api/screen/&lt;connection&gt;</c>) speaks Matgate's screen
 /// protocol (frames of a 4-byte header length, a JSON header and a payload); the picture comes as "screen.tiles" - pieces of the screen,
 /// BGRX rows in zlib - each acknowledged, which paces Matgate. Keys and pointer go as "screen.input" in the engine's own form; for a
-/// connection the user may only watch, Matgate passes nothing on. No clipboard and no sound yet.
+/// connection the user may only watch, Matgate passes nothing on. Sound as PCM on request (screen.audio), the picture quality can change while it runs (screen.config); no clipboard yet.
 /// </summary>
 public sealed class MatgateScreen : IScreenBackend, IScreenMeter
 {
@@ -96,7 +96,8 @@ public sealed class MatgateScreen : IScreenBackend, IScreenMeter
 
     public bool ClipFiles => false;
 
-    public bool Sound => false;
+    /// <summary>Matgate sends the sound of the remote desktop as PCM (48 kHz, 16 bit, stereo) when asked to.</summary>
+    public bool Sound => true;
 
     public int ColorDepth => _colours;
 
@@ -150,9 +151,10 @@ public sealed class MatgateScreen : IScreenBackend, IScreenMeter
 
     public void SecureAttention() => Post("screen.sas", []);
 
-    public void SoundEnabled(bool on)
-    {
-    }
+    public void SoundEnabled(bool on) => Post("screen.audio", new JsonObject { ["on"] = on, ["codec"] = "pcm" });
+
+    /// <summary>Another picture quality while the session runs ("auto", "medium", "low", "fast"): Matgate changes its encoder at once.</summary>
+    public void Quality(string quality) => Post("screen.config", new JsonObject { ["quality"] = quality });
 
     public async ValueTask DisposeAsync()
     {
@@ -285,6 +287,13 @@ public sealed class MatgateScreen : IScreenBackend, IScreenMeter
                 break;
             case "screen.pointer":
                 _host.CursorHidden(data["visible"]?.GetValue<bool>() == false);
+                break;
+            case "screen.audio":
+                if (payload.Length >= 4)
+                {
+                    _host.Audio(payload.Span, 48000, 2);
+                }
+
                 break;
             case "screen.status":
                 _host.Status(ScreenText(data, "state") ?? "", ScreenText(data, "message"));

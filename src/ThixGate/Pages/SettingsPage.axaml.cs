@@ -52,6 +52,7 @@ public partial class SettingsPage : UserControl
         OpenInChoice.SelectionChanged += (_, _) => Apply(() => SettingsService.Update(settings => settings with { OpenSessionIn = (OpenSessionIn)Math.Max(0, OpenInChoice.SelectedIndex) }));
         ConfirmCloseSwitch.IsCheckedChanged += (_, _) => Apply(() => SettingsService.Update(settings => settings with { ConfirmCloseSession = ConfirmCloseSwitch.IsChecked == true }));
         MonitorsChoice.SelectionChanged += (_, _) => Apply(() => SettingsService.Update(settings => settings with { Monitors = MonitorsChoice.SelectedIndex == 1 ? "all" : "one" }));
+        FullBarChoice.SelectionChanged += (_, _) => Apply(() => SettingsService.Update(settings => settings with { FullScreenBar = FullBarChoice.SelectedIndex == 1 ? "always" : "edge" }));
         StatusSwitch.IsCheckedChanged += (_, _) => Apply(() => SettingsService.Update(settings => settings with { ShowSessionStatus = StatusSwitch.IsChecked == true }));
         SshSystemSwitch.IsCheckedChanged += (_, _) => Apply(() => SettingsService.Update(settings => settings with { SshInSystemTerminal = SshSystemSwitch.IsChecked == true }));
         SshTerminalBox.LostFocus += (_, _) => Apply(() => SettingsService.Update(settings => settings with { SshTerminal = (SshTerminalBox.Text ?? "").Trim() }));
@@ -119,6 +120,7 @@ public partial class SettingsPage : UserControl
             ConfirmCloseSwitch.IsChecked = settings.ConfirmCloseSession;
             MonitorsChoice.SelectedIndex = settings.Monitors == "all" ? 1 : 0;
             StatusSwitch.IsChecked = settings.ShowSessionStatus;
+            FullBarChoice.SelectedIndex = settings.FullScreenBar == "always" ? 1 : 0;
             SshSystemSwitch.IsChecked = settings.SshInSystemTerminal;
             SshTerminalRow.IsVisible = settings.SshInSystemTerminal;
             SshTerminalBox.Text = settings.SshTerminal;
@@ -126,7 +128,7 @@ public partial class SettingsPage : UserControl
             AutoInstallSwitch.IsChecked = settings.InstallUpdatesAutomatically;
             foreach (var control in new Control[]
                      {
-                         ThemeChoice, OpenInChoice, ConfirmCloseSwitch, MonitorsChoice, StatusSwitch, SshSystemSwitch, SshTerminalBox, ResetButton,
+                         ThemeChoice, OpenInChoice, ConfirmCloseSwitch, MonitorsChoice, StatusSwitch, FullBarChoice, SshSystemSwitch, SshTerminalBox, ResetButton,
                      })
             {
                 control.IsEnabled = !locked;

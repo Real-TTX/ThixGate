@@ -116,7 +116,10 @@ src/ThixGate            (Avalonia app)
                         Microsoft.Web.WebView2, core only, BuiltInComInteropSupport; WebKitBrowser on macOS through the Objective-C runtime);
                         SessionView (IScreenHost of Mat.Remote and ISshHost: draws the engine's picture into a WriteableBitmap on demand, pointer,
                         keys - numbers as doubles, EngineJson -, sign-in dialog; partial: .Clipboard both ways with text, pictures and files,
-                        .Status latency / frames / data rate + StatusGraph, .FullScreen the bar at the top edge), SessionHub (where a session is: a tab right of the menu (default, like Royal TS) or a
+                        .Status the status bar below as in Matgate's web app (chips, spark, details with StatusGraph, the numbers in
+                        the picture), .Display "Anzeige" (size, quality - live über Matgate, else at the next connect -, sound) and
+                        the way it goes, .FullScreen the floating bar (edge with a handle, or always); AudioPlayer plays the sound:
+                        waveOut on Windows, AudioQueue on macOS), SessionHub (where a session is: a tab right of the menu (default, like Royal TS) or a
                         SessionWindow; Abdocken/Andocken moves it without ending it; full screen = a window; over several monitors = a
                         frameless window spanning them, SessionWindow.Span), KeyMap (PhysicalKey → scancode for RDP, keysym for VNC), SessionLauncher, NullScreenHost
   Controls/             ONE code base per control: LibraryNav (the menu) + ConnectionTree (the library as folders and connections, LibraryService.Tree),

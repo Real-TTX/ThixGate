@@ -168,7 +168,7 @@ public sealed partial class SessionView
         if (total > MaxFetch || _backend is not { } backend)
         {
             ClipboardNote = "Die kopierten Dateien sind zu groß für die Zwischenablage (über 2 GB) – bitte ein freigegebenes Laufwerk nehmen.";
-            _state.Text = $"{_connection.Name} · {ClipboardNote}";
+            _state.Text = $"{ClipboardNote}";
             return;
         }
 
@@ -214,7 +214,7 @@ public sealed partial class SessionView
                     await output.WriteAsync(piece.Data, stop.Token);
                     offset += piece.Data.Length;
                     done += piece.Data.Length;
-                    _state.Text = $"{_connection.Name} · Hole {files.Count(entry => !entry.Folder)} Datei(en) aus der Sitzung … {(total == 0 ? 100 : done * 100 / total)} %";
+                    _state.Text = $"Hole {files.Count(entry => !entry.Folder)} Datei(en) aus der Sitzung … {(total == 0 ? 100 : done * 100 / total)} %";
                 }
             }
 
@@ -236,7 +236,7 @@ public sealed partial class SessionView
             _clipFingerprint = "files:" + string.Join("|", items.Select(item => item.TryGetLocalPath()));
             await clipboard.SetFilesAsync(items);
             ClipboardNote = items.Count == 1 ? "1 Datei aus der Sitzung in der Zwischenablage" : $"{items.Count} Dateien aus der Sitzung in der Zwischenablage";
-            _state.Text = $"{_connection.Name} · {ClipboardNote}";
+            _state.Text = $"{ClipboardNote}";
         }
         catch (OperationCanceledException)
         {
@@ -244,7 +244,7 @@ public sealed partial class SessionView
         catch (Exception exception) when (exception is ScreenException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {
             ClipboardNote = "Die Dateien aus der Sitzung konnten nicht geholt werden: " + exception.Message;
-            _state.Text = $"{_connection.Name} · {ClipboardNote}";
+            _state.Text = $"{ClipboardNote}";
             Log.Warning($"Session {_connection.Id}: {ClipboardNote}");
         }
     }

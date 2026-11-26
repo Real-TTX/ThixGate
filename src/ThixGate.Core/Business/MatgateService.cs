@@ -238,6 +238,9 @@ public static class MatgateService
         AccessPolicy.EnsureMatgateAllowed();
         var account = Require(id);
         var token = ReadToken(account) ?? throw new BusinessException($"Bitte zuerst bei „{account.Name}“ anmelden.");
+
+        // Its version along with it: an older Matgate lists no files, websites and databases (the Matgate page says so).
+        await CheckAsync(account.ServerUrl, id, cancellationToken);
         var cached = MatgateStore.Read(id);
         MatgateLibrary library;
         try

@@ -185,6 +185,9 @@ public sealed record RemoteConnection
     /// <summary>RDP: folders of this computer as drives of the remote desktop - "" none, "*" every drive of the computer, or folders, one a line.</summary>
     public string Drives { get; init; } = "";
 
+    /// <summary>RDP: the sound of the remote desktop plays on this computer (it can be switched in the session).</summary>
+    public bool PlaySound { get; init; } = true;
+
     // ---- SSH ----
 
     /// <summary>SSH, SFTP: a private key file instead of a password (the password is then its passphrase).</summary>

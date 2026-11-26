@@ -72,6 +72,8 @@ public sealed class ConnectionForm : UserControl
     private readonly Button _addFolder = Ui.Button("folder-open", "Ordner hinzufügen …");
     private readonly Control _driveRow;
     private readonly List<CheckBox> _monitorChecks = [];
+    private readonly ToggleSwitch _playSound = new() { OnContent = "", OffContent = "" };
+    private readonly Control _soundRow;
     private IReadOnlyList<RemoteFolder> _folders = [];
     private IReadOnlyList<StoredCredential> _credentials = [];
     private IReadOnlyList<MatgateAccount> _accounts = [];
@@ -120,6 +122,8 @@ public sealed class ConnectionForm : UserControl
         _addFolder.Click += async (_, _) => await AddFolderAsync();
         _monitorRow = fields.Add(nameof(RemoteConnection.Monitors), "Monitore", new StackPanel { Children = { _monitorMode, _monitorChoices } },
             "Mehrere Monitore: die Sitzung im Vollbild über alle gewählten; ein gewählter Monitor allein: Vollbild auf ihm. Nicht bei einer Sitzung auf Matgate.", _displayTab);
+        AutomationProperties.SetName(_playSound, "Ton abspielen");
+        _soundRow = FormFields.SwitchRow("Ton abspielen", "Der Ton des Remote-Desktops kommt aus den Lautsprechern dieses Computers; in der Sitzung lässt er sich ein- und ausschalten.", _playSound);
         _driveRow = fields.Add(nameof(RemoteConnection.Drives), "Laufwerke",
             new StackPanel { Children = { _driveMode, _driveFolders, new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Margin = new Avalonia.Thickness(0, 8, 0, 0), Children = { _addFolder } } } },
             "Ordner dieses Computers erscheinen im Explorer des Remote-PCs („… auf " + ThixGate.Core.Infrastructure.AppInfo.MachineName + "“); ein Ordner, den es auf einem anderen Computer nicht gibt, fehlt dort. Nicht bei einer Sitzung auf Matgate.", _displayTab);
@@ -152,6 +156,7 @@ public sealed class ConnectionForm : UserControl
             fields.Add(nameof(RemoteConnection.Resolution), "Auflösung", _resolution, "auto: folgt dem Fenster · native: wie der Server sie hat · oder feste Größe", _displayTab),
             _monitorRow,
             _driveRow,
+            _soundRow,
             _keyboardRow,
             _certificateRow,
         ]);
@@ -260,6 +265,7 @@ public sealed class ConnectionForm : UserControl
         _resolution.Text = connection.Resolution;
         _keyboard.SelectedIndex = Math.Max(0, KeyboardLayouts.ToList().FindIndex(layout => layout.Id == connection.KeyboardLayout));
         LoadMonitors(connection.Monitors);
+        _playSound.IsChecked = connection.PlaySound;
         _driveMode.SelectedIndex = connection.Drives.Trim() == "*" ? 1 : connection.Drives.Trim().Length > 0 ? 2 : 0;
         _driveFolders.Text = connection.Drives.Trim() == "*" ? "" : connection.Drives;
         _ignoreCertificate.IsChecked = connection.IgnoreCertificate;
@@ -359,7 +365,7 @@ public sealed class ConnectionForm : UserControl
         _domainField.IsVisible = protocol.HasDomain() && !usesCredential;
         _keyField.IsVisible = protocol.HasKeyFile();
         _displayTab.IsVisible = kind == ConnectionKind.Screen;
-        _keyboardRow.IsVisible = _certificateRow.IsVisible = _monitorRow.IsVisible = _driveRow.IsVisible = protocol == ConnectionProtocol.Rdp;
+        _keyboardRow.IsVisible = _certificateRow.IsVisible = _monitorRow.IsVisible = _driveRow.IsVisible = _soundRow.IsVisible = protocol == ConnectionProtocol.Rdp;
         _addressRow.IsVisible = kind != ConnectionKind.Web;
         _urlField.IsVisible = kind == ConnectionKind.Web;
         _rootField.IsVisible = kind == ConnectionKind.Files;
@@ -408,6 +414,7 @@ public sealed class ConnectionForm : UserControl
             KeyboardLayout = KeyboardLayouts[Math.Max(0, _keyboard.SelectedIndex)].Id,
             IgnoreCertificate = _ignoreCertificate.IsChecked == true,
             Monitors = MonitorSetting(),
+            PlaySound = _playSound.IsChecked == true,
             Drives = _driveMode.SelectedIndex switch { 1 => "*", 2 => _driveFolders.Text ?? "", _ => "" },
             Via = viaIndex > 0 ? ConnectVia.Matgate : ConnectVia.Direct,
             MatgateAccountId = viaIndex > 0 && viaIndex <= _accounts.Count ? _accounts[viaIndex - 1].Id : null,

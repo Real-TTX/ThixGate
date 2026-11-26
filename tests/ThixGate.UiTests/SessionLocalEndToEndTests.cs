@@ -76,7 +76,14 @@ public sealed class SessionLocalEndToEndTests
 
             var clipboard = TopLevel.GetTopLevel(view)!.Clipboard!;
             string? text = null;
-            Pump(15, () => (text = Run(clipboard.TryGetTextAsync)) == "Kopiert");
+            Pump(10, () => (text = Run(clipboard.TryGetTextAsync)) == "Kopiert");
+            if (text != "Kopiert")
+            {
+                // A desktop that was just made may not have had its terminal ready: once more.
+                Click(view, 300, 200);
+                Type(view, "echo -n Kopiert | xclip -selection clipboard\n");
+                Pump(10, () => (text = Run(clipboard.TryGetTextAsync)) == "Kopiert");
+            }
             Run(() => clipboard.SetTextAsync("probe"));
             var probe = Run(clipboard.TryGetTextAsync);
             var log = Directory.Exists(ThixGate.Core.Infrastructure.AppPaths.LogDirectory) ? string.Join(Environment.NewLine, Directory.GetFiles(ThixGate.Core.Infrastructure.AppPaths.LogDirectory).SelectMany(File.ReadAllLines).TakeLast(30)) : "";
@@ -100,11 +107,26 @@ public sealed class SessionLocalEndToEndTests
                 Assert.Equal("Hallo vom Computer", File.ReadAllText(back));
             }
 
-            // Full screen: the bar at the top edge instead of the bar above the picture.
+            // The way the session goes, and the numbers in the picture (large: with the graph).
+            Assert.StartsWith("Direkt", view.RouteText());
+            SettingsService.Update(settings => settings with { PerformanceOverlay = true, PerformanceSize = "large", PerformanceCorner = "top-right" });
+            for (var second = 0; second < 3; second++)
+            {
+                Pump(1, () => false);
+                view.MeasureStatus();
+            }
+
+            Shot(window, "session-rdp-status");
+
+            // Full screen: the floating bar instead of the bars above and below the picture.
             window.ToggleFullScreen();
             Pump(1, () => false);
+            view.MeasureStatus();
+            Pump(0.5, () => false);
             Assert.True(view.IsFullScreen);
             Assert.True(view.IsFullBarShown);
+            Assert.False(view.StatusBar.IsVisible);
+            Shot(window, "session-rdp-fullscreen");
             window.ToggleFullScreen();
             Pump(1, () => false);
             Assert.False(view.IsFullScreen);
@@ -120,6 +142,15 @@ public sealed class SessionLocalEndToEndTests
             catch (IOException)
             {
             }
+        }
+    }
+
+    private static void Shot(Window window, string name)
+    {
+        if (Environment.GetEnvironmentVariable("THIXGATE_SCREENSHOTS") is { } shots)
+        {
+            Directory.CreateDirectory(shots);
+            window.CaptureRenderedFrame()?.Save(Path.Combine(shots, name + ".png"));
         }
     }
 

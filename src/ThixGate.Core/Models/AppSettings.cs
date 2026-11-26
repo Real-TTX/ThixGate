@@ -38,6 +38,18 @@ public sealed record AppSettings
     /// <summary>The status bar of a remote desktop (latency, frames, data rate) shows.</summary>
     public bool ShowSessionStatus { get; init; } = true;
 
+    /// <summary>The performance display in the picture (as in Matgate's web app): numbers in a corner, "large" with the graph.</summary>
+    public bool PerformanceOverlay { get; init; }
+
+    /// <summary>"small", "medium" or "large".</summary>
+    public string PerformanceSize { get; init; } = "medium";
+
+    /// <summary>"top-left", "top-right", "bottom-left" or "bottom-right".</summary>
+    public string PerformanceCorner { get; init; } = "top-left";
+
+    /// <summary>The bar of a session in full screen: "edge" comes down at the top edge of the screen, "always" stays.</summary>
+    public string FullScreenBar { get; init; } = "edge";
+
     /// <summary>SSH opens in the terminal of the system (<see cref="SshTerminal"/>) instead of ThixGate's own terminal (a tab or window like RDP/VNC).</summary>
     public bool SshInSystemTerminal { get; init; }
 
