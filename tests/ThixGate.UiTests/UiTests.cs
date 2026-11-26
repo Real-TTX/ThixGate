@@ -524,6 +524,50 @@ public sealed class UiTests
     }
 
     [AvaloniaFact]
+    public void Ssh_opens_in_the_own_terminal_as_a_tab_and_the_terminal_sends_keys()
+    {
+        using var data = new TestData();
+        SettingsService.Update(settings => settings with { ConfirmCloseSession = false });
+        var window = Open(1360, 860);
+        var ssh = LibraryService.SaveConnection(new RemoteConnection { Name = "Kein SSH", Protocol = ConnectionProtocol.Ssh, Host = "127.0.0.1", Port = 1, UserName = "demo" });
+        try
+        {
+            SessionLauncher.OpenAsync(ssh, window).GetAwaiter().GetResult();
+            Settle(window);
+            var view = Assert.Single(SessionHub.OpenSessions);
+            Assert.Same(view, window.ShownSession);
+            var terminal = Assert.IsType<TerminalView>(view.Terminal);
+            for (var until = DateTime.UtcNow.AddSeconds(10); DateTime.UtcNow < until && view.StateText != "Getrennt";)
+            {
+                Settle(window);
+            }
+
+            Assert.Equal("Getrennt", view.StateText); // nothing listens on port 1
+            Assert.True(terminal.Columns >= 80, $"{terminal.Columns} columns");
+
+            // Keys go out as an xterm sends them; text as UTF-8; pasted lines end with Enter.
+            var sent = new List<string>();
+            terminal.Input += bytes => sent.Add(System.Text.Encoding.UTF8.GetString(bytes));
+            terminal.Focus();
+            window.KeyPressQwerty(PhysicalKey.ArrowUp, RawInputModifiers.None);
+            window.KeyPressQwerty(PhysicalKey.C, RawInputModifiers.Control);
+            window.KeyTextInput("ü");
+            terminal.Paste("ls\nexit\n");
+            Assert.Equal(["\u001b[A", "\u0003", "ü", "ls\rexit\r"], sent);
+
+            // What the server sends is drawn.
+            terminal.Show("\u001b[H\u001b[2J\u001b[1;32mdemo@server\u001b[0m:~$ ls\r\nREADME.md  bin");
+            Settle(window);
+            Assert.Equal("demo@server:~$ ls", terminal.Buffer.Text(0));
+            Save(window, "session-ssh-tab");
+        }
+        finally
+        {
+            SessionHub.CloseAll();
+        }
+    }
+
+    [AvaloniaFact]
     public void Sessions_open_as_tabs_right_of_the_menu_undock_into_a_window_and_dock_again()
     {
         using var data = new TestData();

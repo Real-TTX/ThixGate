@@ -5,8 +5,8 @@ Guidance for working in this repository. Keep it in sync with the code: update i
 ## What ThixGate is
 
 A **remote manager** for **Windows and macOS** (like Royal TS / mRemoteNG, in the line of the Thix apps): folders, connections (RDP,
-VNC, SSH) and saved credentials in one library; Remote Desktop and VNC open in a session window of ThixGate itself, SSH in the
-system's terminal. **Matgate first:** the remote engine is Matgate's own (`Mat.Remote`, submodule `external/Matgate`), so a connection
+VNC, SSH) and saved credentials in one library; Remote Desktop, VNC and SSH (its own terminal) open as tabs of ThixGate's main window (or windows of their own; SSH optionally in the
+system's terminal). **Matgate first:** the remote engine is Matgate's own (`Mat.Remote`, submodule `external/Matgate`), so a connection
 means the same in both and an engine fix lands once. ThixGate is the **on-premise** alternative: it needs no Matgate. Optional:
 **ThixCloud** (MatCloud, sibling repository `../MatCloud`, app id `gate`, general sync) keeps folders, connections and credentials –
 never a password – the same on every device; **Matgate** accounts (app API of Matgate 0.58+: sign-in in the browser, its library, connecting through its relay or as a session on Matgate, writing connections back; see
@@ -30,6 +30,8 @@ the app follows MatDesign's rules DESK, TRAY, SETUP.
     shadow with NLA 3390, TigerVNC 5901). `docker build -t thixgate-e2e-desktop external/Matgate/tests/desktop`,
     `docker run -d -p 13389:3389 -p 13390:3390 -p 15901:5901 thixgate-e2e-desktop`, then `THIXGATE_E2E_DESKTOP=127.0.0.1`,
     `THIXGATE_E2E_PORTS=13389,13390,15901`.
+  - SSH (opt-in, `TerminalTests` and `SessionEndToEndTests`): `docker run -d -p 12222:2222 -e USER_NAME=demo -e USER_PASSWORD=demo-only-pw
+    -e PASSWORD_ACCESS=true lscr.io/linuxserver/openssh-server` (Matgate's test SSH server), then `THIXGATE_E2E_SSH=127.0.0.1:12222`.
   - `MatgateEndToEndTests` (opt-in): ThixGate against a real Matgate – sign-in through its pages, library, writing back, RDP/VNC sessions through its
     relay and as sessions on Matgate into the test desktop. `THIXGATE_E2E_MATGATE=<address>`, `THIXGATE_E2E_MATGATE_USER`, `THIXGATE_E2E_MATGATE_PASSWORD` (a test
     Matgate whose connections lead to the test desktop above, with the test passwords stored in Matgate, and whose user may create connections;
@@ -63,14 +65,16 @@ src/ThixGate.Core       (no UI) models, business layer (static classes), infrast
   Business/             LibraryService (folders + connections: checks, normalising per protocol, search/filter/sort/pages, tombstones,
                         Changed; Tree: the rows of the tree of the menu - own folders and connections, then every signed-in
                         Matgate with the folders and connections of its library copy, nothing taken over), CredentialService (the vault: passwords via TokenStore, never synced), SessionTargets (connection →
-                        Mat.Remote ScreenTarget; BackendAsync: engine or MatgateScreen), SshLauncher (system terminal, no password on a command line), TransferService
+                        Mat.Remote ScreenTarget; BackendAsync: engine or MatgateScreen), SshSession (SSH.NET: sign-in with password / key file / keyboard-interactive, host keys via SshHostKeys + known_hosts.json, shell
+                        "xterm-256color", through the relay "über Matgate"), SshLauncher (the system terminal when the settings say so, no password on a command line), TransferService
                         (*.thixgate.json without passwords, *.rdp), MatgateService (accounts, /health, browser sign-in to /app/authorize,
                         library copy, take-over, writing back /app/api/connections), MatgateRelay (127.0.0.1 port → WebSocket
                         /app/api/relay/<id>), MatgateScreen (IScreenBackend of a session on Matgate: /app/api/screen/<id>, screen.tiles
                         = BGRX in zlib, acknowledged; keys as screen.input; screen.auth answered to Matgate), CloudSyncService (sign-in,
                         loop push → pull → long poll) + CloudSyncItems (collections folders/connections/credentials), SettingsService,
                         AccessPolicy, AutostartService, InstallService, InstallerOptions, UpdateService, MacAppBundle, SampleData
-  Infrastructure/       LibraryStore (library.json + vault.json, atomic writes, the cloud's pending rows), MatgateStore (matgate/<account>.json),
+  Terminal/             TerminalBuffer (the xterm emulator: cells, colours, scroll regions, alternate screen, scrollback, replies; no UI), TerminalPalette
+  Infrastructure/       LibraryStore (library.json + vault.json, atomic writes, the cloud's pending rows), MatgateStore (matgate/<account>.json), KnownHostsStore (known_hosts.json),
                         LoopbackCallback (the browser comes back to 127.0.0.1), SettingsStore, TokenStore
                         (DPAPI / Keychain, per SecretKind: Cloud, Vault, Matgate), CloudClient, AppPaths, AppInfo, AppClock, Log,
                         ProblemReports
@@ -85,7 +89,8 @@ src/ThixGate            (Avalonia app)
                         CredentialPages (list + form with Verwendung), MatgatePages (list + form: Allgemein | Verbindungen),
                         MatgateConnectionForm (a connection IN Matgate: create/change/delete as Matgate allows), SettingsPage (Allgemein | Sitzungen |
                         ThixCloud | Updates | Erweitert), AboutPage
-  Sessions/             SessionView (IScreenHost of Mat.Remote: draws the engine's picture into a WriteableBitmap on demand, pointer,
+  Sessions/             TerminalView (draws a TerminalBuffer, keys via TerminalKeys, selection, clipboard, mouse reports) for SSH in a SessionView;
+                        SessionView (IScreenHost of Mat.Remote and ISshHost: draws the engine's picture into a WriteableBitmap on demand, pointer,
                         keys, sign-in dialog), SessionHub (where a session is: a tab right of the menu (default, like Royal TS) or a
                         SessionWindow; Abdocken/Andocken moves it without ending it; full screen = a window), KeyMap (PhysicalKey → scancode for RDP, keysym for VNC), SessionLauncher, NullScreenHost
   Controls/             ONE code base per control: LibraryNav (the menu) + ConnectionTree (the library as folders and connections, LibraryService.Tree),

@@ -44,7 +44,7 @@ public sealed class ConnectionsPage : UserControl
     {
         _layout = new ListLayout<RemoteConnection>(
             "Verbindungen",
-            "Deine Remote-Verbindungen: Remote Desktop und VNC öffnen in ThixGate, SSH im Terminal. Ein Doppelklick verbindet.",
+            "Deine Remote-Verbindungen: Remote Desktop, VNC und SSH öffnen als Tab in ThixGate. Ein Doppelklick verbindet.",
             "Name, Adresse, Benutzer, Notiz oder Schlagwort suchen",
             "Verbindungen",
             Row);

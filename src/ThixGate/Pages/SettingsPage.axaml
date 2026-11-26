@@ -33,7 +33,7 @@
           <!-- ===== Sessions ===== -->
           <TabItem x:Name="SessionsTabItem" Header="Sitzungen">
             <StackPanel>
-              <mat:MatSettingRow Title="Sitzungen öffnen" Description="Remote-Desktop- und VNC-Sitzungen öffnen als Tab rechts vom Menü (wie in Royal TS), in einem eigenen Fenster oder gleich im Vollbild. Ein Tab lässt sich jederzeit abdocken.">
+              <mat:MatSettingRow Title="Sitzungen öffnen" Description="Remote-Desktop-, VNC- und SSH-Sitzungen öffnen als Tab rechts vom Menü (wie in Royal TS), in einem eigenen Fenster oder gleich im Vollbild. Ein Tab lässt sich jederzeit abdocken.">
                 <ComboBox x:Name="OpenInChoice" MinWidth="220" AutomationProperties.Name="Sitzungen öffnen">
                   <ComboBoxItem Content="Als Tab im Hauptfenster" />
                   <ComboBoxItem Content="Im eigenen Fenster" />
@@ -43,7 +43,10 @@
               <mat:MatSettingRow Title="Vor dem Schließen fragen" Description="Fragt, bevor das Fenster einer verbundenen Sitzung geschlossen wird.">
                 <ToggleSwitch x:Name="ConfirmCloseSwitch" OnContent="" OffContent="" AutomationProperties.Name="Vor dem Schließen fragen" />
               </mat:MatSettingRow>
-              <mat:MatSettingRow Title="Terminal für SSH" BorderThickness="0" Description="Leer: Windows Terminal bzw. Terminal.app. Sonst ein Befehl, in dem {ssh} für den SSH-Befehl steht, z. B. wezterm start -- {ssh}.">
+              <mat:MatSettingRow Title="SSH im Terminal des Systems" Description="Aus: SSH öffnet im Terminal von ThixGate (als Tab oder Fenster wie oben). An: im Terminal des Systems mit OpenSSH.">
+                <ToggleSwitch x:Name="SshSystemSwitch" OnContent="" OffContent="" AutomationProperties.Name="SSH im Terminal des Systems" />
+              </mat:MatSettingRow>
+              <mat:MatSettingRow x:Name="SshTerminalRow" Title="Terminal für SSH" BorderThickness="0" Description="Leer: Windows Terminal bzw. Terminal.app. Sonst ein Befehl, in dem {ssh} für den SSH-Befehl steht, z. B. wezterm start -- {ssh}.">
                 <TextBox x:Name="SshTerminalBox" MinWidth="320" Watermark="Standard des Systems" AutomationProperties.Name="Terminal für SSH" />
               </mat:MatSettingRow>
               <mat:MatFormField controls:FormErrors.Field="SshTerminal" Margin="0" />

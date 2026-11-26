@@ -30,6 +30,9 @@ public static class AppPaths
     /// <summary>The libraries of the Matgate accounts, one file each (read-only copies, per computer).</summary>
     public static string MatgateDirectory => Path.Combine(DataDirectory, "matgate");
 
+    /// <summary>The host keys of the SSH servers this computer trusts (per computer).</summary>
+    public static string KnownHostsFile => Path.Combine(DataDirectory, "known_hosts.json");
+
     /// <summary>True when a developer or a test pointed ThixGate to its own folder: it is then its own instance.</summary>
     public static bool HasOverride => _dataDirectoryOverride is not null;
 

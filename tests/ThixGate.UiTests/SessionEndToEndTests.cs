@@ -78,6 +78,80 @@ public sealed class SessionEndToEndTests
         }
     }
 
+    /// <summary>
+    /// SSH in ThixGate's own terminal, as a tab: THIXGATE_E2E_SSH=host:port of a test SSH server with the user demo / demo-only-pw, e.g.
+    /// docker run -d -p 12222:2222 -e USER_NAME=demo -e USER_PASSWORD=demo-only-pw -e PASSWORD_ACCESS=true lscr.io/linuxserver/openssh-server.
+    /// </summary>
+    [AvaloniaFact]
+    public void Ssh_session_in_a_tab_of_the_main_window_runs_a_shell()
+    {
+        if (Environment.GetEnvironmentVariable("THIXGATE_E2E_SSH") is not { } address)
+        {
+            return; // opt-in
+        }
+
+        using var data = new TestData();
+        SettingsService.Update(settings => settings with { ConfirmCloseSession = false, OpenSessionIn = OpenSessionIn.Tab });
+        var credential = CredentialService.Save(new StoredCredential { Name = "Test", UserName = "demo" }, "demo-only-pw");
+        var connection = LibraryService.SaveConnection(new RemoteConnection
+        {
+            Name = "Linux-Server", Protocol = ConnectionProtocol.Ssh, Host = address.Split(':')[0], Port = int.Parse(address.Split(':')[1]), CredentialId = credential.Id,
+        });
+
+        // The server's key is trusted beforehand (the dialog that asks is not clicked here).
+        Task.Run(async () =>
+        {
+            await using var first = new SshSession(connection, new TrustingHost());
+            await first.ConnectAsync(80, 24, CancellationToken.None);
+        }).GetAwaiter().GetResult();
+
+        var main = new MainWindow { Width = 1360, Height = 860 };
+        main.ShowFromTray();
+        try
+        {
+            var view = SessionHub.Open(connection);
+            var terminal = view.Terminal!;
+            void Pump(double seconds, Func<bool> done)
+            {
+                for (var until = DateTime.UtcNow.AddSeconds(seconds); DateTime.UtcNow < until && !done();)
+                {
+                    Dispatcher.UIThread.RunJobs();
+                    AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                    Thread.Sleep(50);
+                }
+            }
+
+            Pump(20, () => view.IsConnected && terminal.Buffer.ScreenText().Contains('$'));
+            Assert.True(view.IsConnected, $"not connected: {view.StateText}");
+            terminal.Paste("printf '\\033[1;32mThixGate\\033[0m SSH im Tab: %s\\n' \"$(uname -s)\"; ls -la --color=always / | head -12");
+            terminal.Focus();
+            main.KeyPressQwerty(Avalonia.Input.PhysicalKey.Enter, Avalonia.Input.RawInputModifiers.None); // a pasted line runs on Enter (bracketed paste)
+            Pump(10, () => terminal.Buffer.ScreenText().Contains("SSH im Tab: Linux", StringComparison.Ordinal));
+            Pump(1, () => false);
+            if (Environment.GetEnvironmentVariable("THIXGATE_SCREENSHOTS") is { } shots)
+            {
+                Directory.CreateDirectory(shots);
+                main.CaptureRenderedFrame()?.Save(Path.Combine(shots, "session-ssh.png"));
+            }
+
+            Assert.Contains("SSH im Tab: Linux", terminal.Buffer.ScreenText());
+            Assert.Same(view, main.ShownSession);
+        }
+        finally
+        {
+            SessionHub.CloseAll();
+            main.IsExiting = true;
+            main.Close();
+        }
+    }
+
+    private sealed class TrustingHost : ISshHost
+    {
+        public Task<SshAnswer?> AskAsync(string userName, string prompt, bool failed, bool canRemember) => Task.FromResult<SshAnswer?>(null);
+
+        public Task<bool> TrustHostKeyAsync(string host, int port, string algorithm, string fingerprint, KnownHost? previous) => Task.FromResult(true);
+    }
+
     private static void Run(ConnectionProtocol protocol, int port, string user, string password)
     {
         if (Host is null)

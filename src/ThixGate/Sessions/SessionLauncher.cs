@@ -6,7 +6,7 @@ namespace ThixGate.Sessions;
 
 /// <summary>
 /// Opens a connection the way its protocol wants: RDP and VNC as a session of the <see cref="SessionHub"/> (a tab of the main window or a window of its own; it opens the relay of a connection
-/// "über Matgate" itself), SSH in the terminal (after opening its relay).
+/// "über Matgate" itself); SSH as well, in ThixGate's own terminal - or, when the settings say so, in the system's terminal (after opening its relay).
 /// </summary>
 public static class SessionLauncher
 {
@@ -21,7 +21,7 @@ public static class SessionLauncher
             return;
         }
 
-        if (connection.Protocol == ConnectionProtocol.Ssh)
+        if (connection.Protocol == ConnectionProtocol.Ssh && SettingsService.Get().SshInSystemTerminal)
         {
             await SshLauncher.OpenAsync(connection);
             return;

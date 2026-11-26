@@ -101,6 +101,24 @@ internal static class SelfTest
             return Task.FromResult("");
         });
 
+        await Check("SSH (SSH.NET) and terminal", async () =>
+        {
+            var buffer = new Core.Terminal.TerminalBuffer(40, 5);
+            buffer.Feed("\u001b[1;32mgrün\u001b[0m\r\nzwei");
+            Ensure(buffer.Text(0) == "grün" && buffer.Row(0)[0].Foreground == 2 && buffer.Text(1) == "zwei", "the terminal did not read its input");
+            var connection = new RemoteConnection { Name = "Selbsttest", Protocol = ConnectionProtocol.Ssh, Host = "127.0.0.1", Port = 1, UserName = "probe" };
+            await using var session = new SshSession(connection, new RefusingSshHost());
+            try
+            {
+                await session.ConnectAsync(80, 24, CancellationToken.None);
+                throw new InvalidOperationException("connected to port 1");
+            }
+            catch (BusinessException exception)
+            {
+                return exception.Message;
+            }
+        });
+
         await Check("install options (installer.json, arguments)", () =>
         {
             Ensure(InstallerOptions.Config is { Autostart: not null, DesktopShortcut: not null, AutomaticUpdates: not null }, "installer.json not read");
@@ -189,6 +207,14 @@ internal static class SelfTest
         }
 
         return failures == 0 ? 0 : 1;
+    }
+
+    /// <summary>The self test signs in nowhere: every question is answered "no".</summary>
+    private sealed class RefusingSshHost : ISshHost
+    {
+        public Task<SshAnswer?> AskAsync(string userName, string prompt, bool failed, bool canRemember) => Task.FromResult<SshAnswer?>(null);
+
+        public Task<bool> TrustHostKeyAsync(string host, int port, string algorithm, string fingerprint, KnownHost? previous) => Task.FromResult(false);
     }
 
     private static void Ensure(bool condition, string message)

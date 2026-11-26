@@ -26,7 +26,7 @@ namespace ThixGate.Sessions;
 /// remote pointer, asks for credentials, and sends mouse, wheel and keys in the same messages as Matgate's page. The resolution follows the
 /// view ("auto"). A bar at the top: state, Strg+Alt+Entf, Vollbild, Abdocken / Andocken, Trennen / Neu verbinden.
 /// </summary>
-public sealed class SessionView : UserControl, IScreenHost
+public sealed class SessionView : UserControl, IScreenHost, ISshHost
 {
     private readonly RemoteConnection _connection;
     private readonly Image _image = new() { Stretch = Stretch.Uniform, Focusable = true };
@@ -43,6 +43,8 @@ public sealed class SessionView : UserControl, IScreenHost
     private readonly HashSet<PhysicalKey> _keysDown = [];
     private WriteableBitmap? _bitmap;
     private IScreenBackend? _backend;
+    private readonly TerminalView? _terminal;
+    private SshSession? _ssh;
     private CancellationTokenSource? _run;
     private volatile bool _dirty;
     private int _drawPosted;
@@ -80,7 +82,20 @@ public sealed class SessionView : UserControl, IScreenHost
         bar.Children.Add(_state);
 
         _surface.Background = Brushes.Black;
-        _surface.Child = new Panel { Children = { _image, _overlay } };
+        if (connection.Protocol == ConnectionProtocol.Ssh)
+        {
+            // SSH: ThixGate's own terminal instead of a picture; it handles its keys, mouse and clipboard itself.
+            _terminal = new TerminalView();
+            _terminal.Input += bytes => _ssh?.Send(bytes);
+            _terminal.GridChanged += (columns, rows) => _ssh?.Resize(columns, rows);
+            _terminal.Buffer.TitleChanged += title => Ui.Post(() => _state.Text = title.Length > 0 ? $"{connection.Name} · {title}" : $"{connection.Name} · {Protocols.Address(connection)}");
+            _surface.Child = new Panel { Children = { _terminal, _overlay } };
+        }
+        else
+        {
+            _surface.Child = new Panel { Children = { _image, _overlay } };
+        }
+
         var root = new DockPanel();
         root.Children.Add(Ui.Docked(new Border { Child = bar }.Use(Border.BackgroundProperty, "Mat.SurfaceRaised"), Dock.Top));
         root.Children.Add(_surface);
@@ -99,6 +114,11 @@ public sealed class SessionView : UserControl, IScreenHost
         _surface.PointerMoved += (_, e) => Pointer(e);
         _surface.PointerPressed += (_, e) =>
         {
+            if (_terminal is not null)
+            {
+                return;
+            }
+
             _surface.Focus();
             Pointer(e);
             Button(e.GetCurrentPoint(_surface).Properties.PointerUpdateKind, true);
@@ -106,12 +126,22 @@ public sealed class SessionView : UserControl, IScreenHost
         };
         _surface.PointerReleased += (_, e) =>
         {
+            if (_terminal is not null)
+            {
+                return;
+            }
+
             Pointer(e);
             Button(e.GetCurrentPoint(_surface).Properties.PointerUpdateKind, false);
             e.Handled = true;
         };
         _surface.PointerWheelChanged += (_, e) =>
         {
+            if (_terminal is not null)
+            {
+                return;
+            }
+
             Pointer(e);
             Send(new JsonObject { ["t"] = "w", ["dy"] = (int)Math.Round(e.Delta.Y * 120), ["dx"] = (int)Math.Round(-e.Delta.X * 120) });
             e.Handled = true;
@@ -154,6 +184,9 @@ public sealed class SessionView : UserControl, IScreenHost
         }
     }
 
+    /// <summary>The terminal of an SSH session (null for RDP / VNC).</summary>
+    public TerminalView? Terminal => _terminal;
+
     /// <summary>The button "Abdocken" / "Andocken" (tests).</summary>
     public Button DockButton => _dock;
 
@@ -182,7 +215,7 @@ public sealed class SessionView : UserControl, IScreenHost
     public void Shutdown() => Stop(null);
 
     /// <summary>Puts the keyboard into the session.</summary>
-    public void FocusScreen() => _surface.Focus();
+    public void FocusScreen() => ((Control?)_terminal ?? _surface).Focus();
 
     // ================================================================= life cycle
 
@@ -193,7 +226,7 @@ public sealed class SessionView : UserControl, IScreenHost
         var token = _run.Token;
         ShowState("Verbinde …", "refresh", Tone.Accent, $"Verbinde mit {Protocols.Address(_connection)} …");
         _reconnect.IsVisible = false;
-        _ = Task.Run(() => RunAsync(token), token);
+        _ = Task.Run(() => _terminal is null ? RunAsync(token) : RunSshAsync(token), token);
     }
 
     private async Task RunAsync(CancellationToken token)
@@ -251,6 +284,72 @@ public sealed class SessionView : UserControl, IScreenHost
         }
     }
 
+    /// <summary>SSH: connect and sign in (<see cref="SshSession"/>), then the shell runs in the terminal until it ends.</summary>
+    private async Task RunSshAsync(CancellationToken token)
+    {
+        var terminal = _terminal!;
+        var (columns, rows) = await Dispatcher.UIThread.InvokeAsync(() => (terminal.Columns, terminal.Rows));
+        var session = new SshSession(_connection, this);
+        session.Received += terminal.Receive;
+        try
+        {
+            await session.ConnectAsync(columns, rows, token);
+            _ssh = session;
+            _isConnected = true;
+            Ui.Post(() =>
+            {
+                ShowState("Verbunden", "check", Tone.Success, null);
+                session.Resize(terminal.Columns, terminal.Rows); // the tab may have changed its size while signing in
+                terminal.Focus();
+            });
+            var reason = await session.RunAsync(token);
+            Ui.Post(() => Ended(reason is { Length: > 0 } ? $"Die Sitzung wurde beendet: {reason}" : "Die Sitzung wurde beendet."));
+        }
+        catch (OperationCanceledException)
+        {
+            if (!token.IsCancellationRequested)
+            {
+                Ui.Post(() => Ended("Die Anmeldung wurde abgebrochen."));
+            }
+        }
+        catch (Exception exception) when (exception is BusinessException or IOException or System.Net.Sockets.SocketException
+                                              or Renci.SshNet.Common.SshException or InvalidOperationException)
+        {
+            Log.Warning($"SSH {_connection.Id}: {exception.GetType().Name}: {exception.Message}");
+            Ui.Post(() => Ended(exception.Message));
+        }
+        finally
+        {
+            _isConnected = false;
+            if (ReferenceEquals(_ssh, session))
+            {
+                _ssh = null;
+            }
+
+            session.Received -= terminal.Receive;
+            await session.DisposeAsync();
+        }
+    }
+
+    async Task<SshAnswer?> ISshHost.AskAsync(string userName, string prompt, bool failed, bool canRemember)
+    {
+        string[] need = userName.Length == 0 ? ["username", "password"] : ["password"];
+        var answer = await Dispatcher.UIThread.InvokeAsync(() => SignInDialog.AskAsync(Ui.WindowOf(this), _connection.Name, need, userName, "", failed, canRemember));
+        return answer is null ? null : new SshAnswer(answer.UserName.Length > 0 ? answer.UserName : userName, answer.Password, answer.Remember);
+    }
+
+    async Task<bool> ISshHost.TrustHostKeyAsync(string host, int port, string algorithm, string fingerprint, KnownHost? previous)
+    {
+        var address = port == 22 ? host : $"{host}:{port}";
+        return await Dispatcher.UIThread.InvokeAsync(() => previous is null
+            ? ConfirmDialog.AskAsync(Ui.WindowOf(this), "Neuer SSH-Server",
+                $"ThixGate kennt {address} noch nicht. Der Server zeigt diesen Schlüssel:\n\n{algorithm}\n{fingerprint}\n\nVergleiche ihn mit dem Schlüssel des Servers (ssh-keygen -lf). Wenn du ihm vertraust, merkt ThixGate ihn sich.",
+                "Vertrauen und verbinden")
+            : ConfirmDialog.AskAsync(Ui.WindowOf(this), "Der Schlüssel des Servers hat sich geändert",
+                $"{address} zeigt einen anderen Schlüssel als beim letzten Mal ({previous.TrustedAt.ToLocalTime():dd.MM.yyyy}):\n\nvorher {previous.Algorithm} {previous.Fingerprint}\njetzt {algorithm} {fingerprint}\n\nWurde der Server neu eingerichtet, ist das in Ordnung. Sonst liest vielleicht jemand mit: dann nicht verbinden.",
+                "Neuen Schlüssel annehmen", isDestructive: true));
+    }
+
     private void Stop(string? message)
     {
         ReleaseAll();
@@ -276,12 +375,16 @@ public sealed class SessionView : UserControl, IScreenHost
         _overlay.Text = overlay ?? "";
         _overlay.IsVisible = overlay is not null;
         _image.Opacity = overlay is null ? 1 : 0.35;
+        if (_terminal is not null)
+        {
+            _terminal.Opacity = overlay is null || _ssh is not null ? 1 : 0.35;
+        }
     }
 
     private void ToggleFullScreen()
     {
         FullScreenRequested?.Invoke(this, EventArgs.Empty);
-        _surface.Focus();
+        FocusScreen();
     }
 
     // ================================================================= picture
@@ -517,6 +620,11 @@ public sealed class SessionView : UserControl, IScreenHost
             e.Handled = true;
             ToggleFullScreen();
             return;
+        }
+
+        if (_terminal is not null)
+        {
+            return; // the terminal reads its keys itself
         }
 
         var (scancode, extended) = KeyMap.ScancodeOf(e.PhysicalKey);

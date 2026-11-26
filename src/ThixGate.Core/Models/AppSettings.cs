@@ -32,7 +32,10 @@ public sealed record AppSettings
     /// <summary>Ask before a running session's window is closed.</summary>
     public bool ConfirmCloseSession { get; init; } = true;
 
-    /// <summary>The terminal SSH sessions open in (empty: the system's: Windows Terminal / Terminal.app).</summary>
+    /// <summary>SSH opens in the terminal of the system (<see cref="SshTerminal"/>) instead of ThixGate's own terminal (a tab or window like RDP/VNC).</summary>
+    public bool SshInSystemTerminal { get; init; }
+
+    /// <summary>The system's terminal for SSH when <see cref="SshInSystemTerminal"/> (empty: Windows Terminal / Terminal.app).</summary>
     public string SshTerminal { get; init; } = "";
 
     // ---- Matgate ----
