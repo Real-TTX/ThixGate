@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Models, business layer (static classes) and infrastructure of the desktop app for Windows and macOS. No UI. Windows-only code is
+    guarded by OperatingSystem.IsWindows() or [SupportedOSPlatform("windows")].
+    MatCloud/ is a COPY of the contract of MatCloud (ThixCloud: routes, DTOs, MatCloudClient): never edited here, copied again with
+    node ../MatCloud/tools/contract-copy.js src/ThixGate.Core (see CLAUDE.md).
+    The remote engine (RDP, VNC) is Matgate's own: Mat.Remote from the submodule external/Matgate (see CLAUDE.md).
+  -->
+  <PropertyGroup>
+    <TargetFramework>$(DesktopTargetFramework)</TargetFramework>
+    <RootNamespace>ThixGate.Core</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <SupportedOSPlatformVersion Condition="'$(OS)' == 'Windows_NT'">10.0.17763.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ThixGate.Tests" />
+    <InternalsVisibleTo Include="ThixGate" />
+    <InternalsVisibleTo Include="ThixGate.UiTests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- What the setup offers (SETUP-08): read by InstallerOptions, published in the update manifest by CI -->
+    <EmbeddedResource Include="installer.json" LogicalName="installer.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.15" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\external\Matgate\Mat.Remote\Mat.Remote.csproj" />
+  </ItemGroup>
+
+</Project>

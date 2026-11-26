@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ThixGate.Core/ThixGate.Core.csproj" />
+    <Project Path="src/ThixGate/ThixGate.csproj" />
+  </Folder>
+  <Folder Name="/external/">
+    <Project Path="external/Matgate/Mat.Remote/Mat.Remote.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ThixGate.Tests/ThixGate.Tests.csproj" />
+    <Project Path="tests/ThixGate.UiTests/ThixGate.UiTests.csproj" />
+  </Folder>
+</Solution>

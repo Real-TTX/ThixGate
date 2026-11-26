@@ -1,0 +1,64 @@
+<Project>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Deterministic>true</Deterministic>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <Company>Matthias Schmoldt</Company>
+    <Product>ThixGate</Product>
+    <Authors>Matthias Schmoldt</Authors>
+    <Copyright>© Matthias Schmoldt</Copyright>
+    <SatelliteResourceLanguages>de;en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!--
+    The desktop projects (ThixGate.Core, ThixGate and the tests) use the Windows target framework when they are built on Windows
+    (DPAPI, registry, shell). On macOS they are plain net10.0. Mat.Remote (the engine shared with Matgate, external/Matgate) stays net10.0.
+  -->
+  <PropertyGroup>
+    <DesktopTargetFramework Condition="'$(OS)' == 'Windows_NT'">net10.0-windows10.0.19041.0</DesktopTargetFramework>
+    <DesktopTargetFramework Condition="'$(OS)' != 'Windows_NT'">net10.0</DesktopTargetFramework>
+  </PropertyGroup>
+
+  <!--
+    Versioning (single source of truth: Major/Minor below). CI sets Channel / BuildNumber / BuildDate:
+      release : <major>.<minor>.<build>-<date>   e.g. 0.1.42-20261126   (branch main)
+      nightly : nightly-<build>-<date>          e.g. nightly-43-20261126 (branch dev)
+      local   : local-<date>                    e.g. local-20261126      (every local build)
+    The build number is the GitHub run number and increases with every build; the update check compares it.
+  -->
+  <PropertyGroup>
+    <ThixGateMajor>0</ThixGateMajor>
+    <ThixGateMinor>1</ThixGateMinor>
+
+    <BuildNumber Condition="'$(BuildNumber)' == ''">0</BuildNumber>
+    <Channel Condition="'$(Channel)' == ''">local</Channel>
+    <BuildDate Condition="'$(BuildDate)' == ''">$([System.DateTime]::UtcNow.ToString('yyyyMMdd'))</BuildDate>
+
+    <Version>$(ThixGateMajor).$(ThixGateMinor).$(BuildNumber)</Version>
+    <AssemblyVersion>$(ThixGateMajor).$(ThixGateMinor).0.0</AssemblyVersion>
+    <FileVersion>$(ThixGateMajor).$(ThixGateMinor).$(BuildNumber).0</FileVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Channel)' == 'release'">
+    <InformationalVersion>$(ThixGateMajor).$(ThixGateMinor).$(BuildNumber)-$(BuildDate)</InformationalVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Channel)' == 'nightly'">
+    <InformationalVersion>nightly-$(BuildNumber)-$(BuildDate)</InformationalVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Channel)' == 'local'">
+    <InformationalVersion>local-$(BuildDate)</InformationalVersion>
+  </PropertyGroup>
+
+  <!-- The running program needs channel and build number (update check, about page). -->
+  <ItemGroup>
+    <AssemblyMetadata Include="ThixGateChannel" Value="$(Channel)" />
+    <AssemblyMetadata Include="ThixGateBuildNumber" Value="$(BuildNumber)" />
+    <AssemblyMetadata Include="ThixGateRepository" Value="Real-TTX/ThixGate" />
+  </ItemGroup>
+
+</Project>

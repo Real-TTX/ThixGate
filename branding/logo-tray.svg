@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 256 256">
+  <!--
+    ThixGate tray / menu bar glyph (16-22 px): one colour, no tile - the gate with the chevron. On macOS it is a template
+    image (black + alpha; the menu bar colours it), on Windows the app uses the small icon instead.
+  -->
+  <path d="M40 232V112A88 88 0 0 1 216 112V232" fill="none" stroke="#000000" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M106 116L150 158L106 200" fill="none" stroke="#000000" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

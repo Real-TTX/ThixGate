@@ -1,0 +1,216 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mat="using:MatDesktop"
+             xmlns:controls="using:ThixGate.Controls"
+             x:Class="ThixGate.Pages.SettingsPage">
+  <!-- Settings in tabs: Allgemein | Sitzungen | ThixCloud | Updates | Erweitert. A switch applies at once (like macOS). -->
+  <Border Background="{DynamicResource Mat.Surface}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="36,28,36,28" MaxWidth="880" HorizontalAlignment="Left">
+        <TextBlock Text="Einstellungen" Theme="{StaticResource MatText.PageTitle}" />
+        <TextBlock Theme="{StaticResource MatText.Muted}" Margin="0,4,0,0"
+                   Text="Die Einstellungen dieses Computers. Ordner, Verbindungen und Zugangsdaten gleicht die ThixCloud ab (Passwörter nie), diese Einstellungen nicht." />
+        <controls:InfoBar x:Name="PolicyNote" Margin="0,14,0,0" />
+        <controls:InfoBar x:Name="PageMessage" Margin="0,14,0,0" />
+
+        <TabControl x:Name="Tabs" Margin="0,14,0,0">
+          <!-- ===== General ===== -->
+          <TabItem x:Name="GeneralTabItem" Header="Allgemein">
+            <StackPanel>
+              <mat:MatSettingRow Title="Erscheinungsbild">
+                <ComboBox x:Name="ThemeChoice" MinWidth="220" AutomationProperties.Name="Erscheinungsbild">
+                  <ComboBoxItem Content="Wie das System" />
+                  <ComboBoxItem Content="Hell" />
+                  <ComboBoxItem Content="Dunkel" />
+                </ComboBox>
+              </mat:MatSettingRow>
+              <mat:MatSettingRow Title="Bei der Anmeldung starten" Description="ThixGate startet unsichtbar im Infobereich / in der Menüleiste – die letzten Verbindungen sind dort mit einem Klick erreichbar." BorderThickness="0">
+                <ToggleSwitch x:Name="AutostartSwitch" OnContent="" OffContent="" AutomationProperties.Name="Bei der Anmeldung starten" />
+              </mat:MatSettingRow>
+            </StackPanel>
+          </TabItem>
+
+          <!-- ===== Sessions ===== -->
+          <TabItem x:Name="SessionsTabItem" Header="Sitzungen">
+            <StackPanel>
+              <mat:MatSettingRow Title="Sitzungen öffnen" Description="Remote-Desktop- und VNC-Sitzungen öffnen in einem eigenen Fenster – oder gleich im Vollbild.">
+                <ComboBox x:Name="OpenInChoice" MinWidth="220" AutomationProperties.Name="Sitzungen öffnen">
+                  <ComboBoxItem Content="Im Fenster" />
+                  <ComboBoxItem Content="Im Vollbild" />
+                </ComboBox>
+              </mat:MatSettingRow>
+              <mat:MatSettingRow Title="Vor dem Schließen fragen" Description="Fragt, bevor das Fenster einer verbundenen Sitzung geschlossen wird.">
+                <ToggleSwitch x:Name="ConfirmCloseSwitch" OnContent="" OffContent="" AutomationProperties.Name="Vor dem Schließen fragen" />
+              </mat:MatSettingRow>
+              <mat:MatSettingRow Title="Terminal für SSH" BorderThickness="0" Description="Leer: Windows Terminal bzw. Terminal.app. Sonst ein Befehl, in dem {ssh} für den SSH-Befehl steht, z. B. wezterm start -- {ssh}.">
+                <TextBox x:Name="SshTerminalBox" MinWidth="320" Watermark="Standard des Systems" AutomationProperties.Name="Terminal für SSH" />
+              </mat:MatSettingRow>
+              <mat:MatFormField controls:FormErrors.Field="SshTerminal" Margin="0" />
+            </StackPanel>
+          </TabItem>
+
+          <!-- ===== Cloud ===== -->
+          <TabItem x:Name="CloudTabItem" Header="ThixCloud">
+            <StackPanel>
+              <TextBlock Theme="{StaticResource MatText.Muted}" Margin="0,0,0,16"
+                         Text="Mit der ThixCloud sind deine Ordner, Verbindungen und Zugangsdaten (ohne Passwörter) auf allen Geräten gleich. Passwörter und Einstellungen bleiben auf jedem Computer." />
+              <controls:InfoBar x:Name="CloudMessage" />
+
+              <!-- Not connected: sign in, in the browser (every account, also MatIdentity) or with user name and password -->
+              <StackPanel x:Name="CloudLogin" MaxWidth="520" HorizontalAlignment="Left">
+                <mat:MatFormField Label="Adresse der Cloud" controls:FormErrors.Field="ServerUrl" Hint="Die Adresse deiner ThixCloud, z. B. https://cloud.example.com">
+                  <TextBox x:Name="ServerUrlBox" Watermark="https://" />
+                </mat:MatFormField>
+                <mat:MatFormField Label="Name dieses Geräts" controls:FormErrors.Field="DeviceName" Hint="So erscheint dieser Computer in der ThixCloud unter „Geräte“.">
+                  <TextBox x:Name="DeviceNameBox" />
+                </mat:MatFormField>
+
+                <!-- The first way: in the browser -->
+                <StackPanel x:Name="BrowserSignIn" Margin="0,6,0,0">
+                  <TextBlock Theme="{StaticResource MatText.Muted}" Margin="0,0,0,12"
+                             Text="Die Anmeldung öffnet sich im Browser: Melde dich dort an – mit deinem Konto der ThixCloud oder über MatIdentity – und bestätige den Code, den ThixGate dir zeigt." />
+                  <controls:ActionBar>
+                    <Button x:Name="BrowserConnectButton" Theme="{StaticResource MatButton.Primary}" Click="OnBrowserConnectClick">
+                      <controls:IconLabel Icon="globe" Text="Im Browser anmelden" />
+                    </Button>
+                    <Button x:Name="ShowPasswordSignInButton" Click="OnShowPasswordSignInClick">
+                      <controls:IconLabel Icon="key" Text="Mit Benutzername und Passwort" />
+                    </Button>
+                  </controls:ActionBar>
+                </StackPanel>
+
+                <!-- Waiting for the browser: the code to compare -->
+                <Border x:Name="BrowserCode" Theme="{StaticResource MatCard}" IsVisible="False" Margin="0,6,0,0">
+                  <StackPanel Spacing="10">
+                    <TextBlock Text="Dein Code" Theme="{StaticResource MatText.Muted}" />
+                    <SelectableTextBlock x:Name="BrowserCodeText" FontFamily="{DynamicResource Mat.Mono}" FontSize="{DynamicResource Mat.FontSize3xl}"
+                                         FontWeight="SemiBold" LetterSpacing="3" Foreground="{DynamicResource Mat.AccentText}" AutomationProperties.Name="Code" />
+                    <TextBlock TextWrapping="Wrap" FontWeight="SemiBold" Text="Bestätige den Code im Browser." />
+                    <TextBlock x:Name="BrowserCodeHint" Theme="{StaticResource MatText.Muted}"
+                               Text="Melde dich auf der Seite der ThixCloud an und prüfe, dass dort derselbe Code steht. ThixGate verbindet sich, sobald du bestätigt hast." />
+                    <controls:ActionBar Margin="0,4,0,0">
+                      <Button x:Name="OpenLinkButton" Click="OnOpenLinkClick">
+                        <controls:IconLabel Icon="external" Text="Seite erneut öffnen" />
+                      </Button>
+                      <Button x:Name="CancelLinkButton" Click="OnCancelLinkClick">
+                        <controls:IconLabel Icon="x" Text="Abbrechen" />
+                      </Button>
+                    </controls:ActionBar>
+                  </StackPanel>
+                </Border>
+
+                <!-- The second way: user name and password of a local account -->
+                <StackPanel x:Name="PasswordSignIn" IsVisible="False" Margin="0,6,0,0">
+                  <mat:MatFormField Label="Benutzername" controls:FormErrors.Field="UserName">
+                    <TextBox x:Name="UserNameBox" />
+                  </mat:MatFormField>
+                  <mat:MatFormField Label="Passwort" controls:FormErrors.Field="Password" Hint="Wird nur für die Anmeldung gebraucht und nicht gespeichert.">
+                    <TextBox x:Name="PasswordBox" PasswordChar="●" />
+                  </mat:MatFormField>
+                  <controls:ActionBar Margin="0,6,0,0">
+                    <Button x:Name="ConnectButton" Theme="{StaticResource MatButton.Primary}" Click="OnConnectClick">
+                      <controls:IconLabel Icon="login" Text="Anmelden" />
+                    </Button>
+                    <Button x:Name="ShowBrowserSignInButton" Click="OnShowBrowserSignInClick">
+                      <controls:IconLabel Icon="globe" Text="Im Browser anmelden" />
+                    </Button>
+                  </controls:ActionBar>
+                </StackPanel>
+              </StackPanel>
+
+              <!-- Connected: state and actions -->
+              <StackPanel x:Name="CloudConnected" IsVisible="False" Spacing="16">
+                <Border Theme="{StaticResource MatCard}" MaxWidth="560" HorizontalAlignment="Left">
+                  <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                    <TextBlock Text="Cloud" Theme="{StaticResource MatText.Muted}" Margin="0,4,24,4" />
+                    <SelectableTextBlock Grid.Column="1" x:Name="CloudServerText" Margin="0,4" />
+                    <TextBlock Grid.Row="1" Text="Konto" Theme="{StaticResource MatText.Muted}" Margin="0,4,24,4" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" x:Name="CloudAccountText" Margin="0,4" />
+                    <TextBlock Grid.Row="2" Text="Dieses Gerät" Theme="{StaticResource MatText.Muted}" Margin="0,4,24,4" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" x:Name="CloudDeviceText" Margin="0,4" />
+                    <TextBlock Grid.Row="3" Text="Status" Theme="{StaticResource MatText.Muted}" Margin="0,4,24,4" />
+                    <TextBlock Grid.Row="3" Grid.Column="1" x:Name="CloudStateText" Margin="0,4" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="4" Text="Zuletzt" Theme="{StaticResource MatText.Muted}" Margin="0,4,24,4" />
+                    <TextBlock Grid.Row="4" Grid.Column="1" x:Name="CloudLastSyncText" Margin="0,4" />
+                  </Grid>
+                </Border>
+                <controls:ActionBar>
+                  <Button Theme="{StaticResource MatButton.Primary}" Click="OnSyncNowClick">
+                    <controls:IconLabel Icon="refresh" Text="Jetzt abgleichen" />
+                  </Button>
+                  <Button Click="OnOpenCloudClick">
+                    <controls:IconLabel Icon="external" Text="Im Browser öffnen" />
+                  </Button>
+                  <Button x:Name="DisconnectButton" Theme="{StaticResource MatButton.Danger}" controls:ActionBar.Separated="True" Click="OnDisconnectClick">
+                    <controls:IconLabel Icon="logout" Text="Abmelden" />
+                  </Button>
+                </controls:ActionBar>
+              </StackPanel>
+            </StackPanel>
+          </TabItem>
+
+          <!-- ===== Updates ===== -->
+          <TabItem x:Name="UpdatesTabItem" Header="Updates">
+            <StackPanel>
+              <Border Theme="{StaticResource MatCard}" MaxWidth="560" HorizontalAlignment="Left" Margin="0,0,0,14">
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto">
+                  <TextBlock Text="Installiert" Theme="{StaticResource MatText.Muted}" Margin="0,4,24,4" />
+                  <TextBlock Grid.Column="1" x:Name="InstalledVersionText" Margin="0,4" />
+                  <TextBlock Grid.Row="1" Text="Kanal" Theme="{StaticResource MatText.Muted}" Margin="0,4,24,4" />
+                  <TextBlock Grid.Row="1" Grid.Column="1" x:Name="ChannelText" Margin="0,4" />
+                  <TextBlock Grid.Row="2" Text="Zuletzt geprüft" Theme="{StaticResource MatText.Muted}" Margin="0,4,24,4" />
+                  <TextBlock Grid.Row="2" Grid.Column="1" x:Name="LastCheckText" Margin="0,4" />
+                </Grid>
+              </Border>
+              <controls:InfoBar x:Name="UpdateMessage" />
+              <ProgressBar x:Name="UpdateProgress" Theme="{StaticResource MatProgress}" IsVisible="False" Maximum="1" Margin="0,0,0,12" MaxWidth="560" HorizontalAlignment="Stretch" />
+              <controls:ActionBar Margin="0,0,0,10">
+                <Button x:Name="CheckUpdateButton" Click="OnCheckUpdateClick">
+                  <controls:IconLabel Icon="refresh" Text="Nach Updates suchen" />
+                </Button>
+                <Button x:Name="InstallUpdateButton" Theme="{StaticResource MatButton.Primary}" Click="OnInstallUpdateClick" IsVisible="False">
+                  <controls:IconLabel Icon="download" Text="Update installieren" />
+                </Button>
+                <Button Click="OnReleasePageClick">
+                  <controls:IconLabel Icon="external" Text="Versionen auf GitHub" />
+                </Button>
+              </controls:ActionBar>
+              <mat:MatSettingRow Title="Automatisch nach Updates suchen" Description="Beim Start und alle 6 Stunden, im eigenen Kanal (Release oder Nightly).">
+                <ToggleSwitch x:Name="CheckUpdatesSwitch" OnContent="" OffContent="" AutomationProperties.Name="Automatisch nach Updates suchen" />
+              </mat:MatSettingRow>
+              <mat:MatSettingRow Title="Updates automatisch installieren" BorderThickness="0"
+                                 Description="Full-Auto-Update: neue Versionen werden ohne Rückfrage installiert, ThixGate startet danach neu im Hintergrund.">
+                <ToggleSwitch x:Name="AutoInstallSwitch" OnContent="" OffContent="" AutomationProperties.Name="Updates automatisch installieren" />
+              </mat:MatSettingRow>
+            </StackPanel>
+          </TabItem>
+
+          <!-- ===== Advanced ===== -->
+          <TabItem x:Name="AdvancedTabItem" Header="Erweitert">
+            <StackPanel>
+              <mat:MatSettingRow Title="Datenordner" x:Name="DataFolderRow">
+                <Button Click="OnOpenDataFolderClick">
+                  <controls:IconLabel Icon="external" Text="Öffnen" />
+                </Button>
+              </mat:MatSettingRow>
+              <mat:MatSettingRow Title="Problembericht" x:Name="LogFolderRow"
+                                 Description="Stürzt ThixGate ab oder hängt es, steht ein Bericht im Log-Ordner – schick ihn mit, wenn du ein Problem meldest.">
+                <Button Click="OnOpenLogFolderClick">
+                  <controls:IconLabel Icon="file-text" Text="Log-Ordner öffnen" />
+                </Button>
+              </mat:MatSettingRow>
+              <mat:MatSettingRow Title="Einstellungen zurücksetzen" BorderThickness="0"
+                                 Description="Alle Einstellungen dieses Computers auf den Anfang – Verbindungen, Zugangsdaten, ThixCloud und Matgate bleiben.">
+                <Button x:Name="ResetButton" Theme="{StaticResource MatButton.Danger}" Click="OnResetClick">
+                  <controls:IconLabel Icon="restore" Text="Zurücksetzen" />
+                </Button>
+              </mat:MatSettingRow>
+              <TextBlock Theme="{StaticResource MatText.Muted}" Margin="0,16,0,0"
+                         Text="Administratoren können ThixGate per Richtlinie einschränken (LockConfiguration, DisableCloud, DisableUpdates, DisableMatgate, DisableSavedPasswords) – unter Windows in HKLM\SOFTWARE\Policies\ThixGate, unter macOS per Konfigurationsprofil info.schmoldt.thixgate." />
+            </StackPanel>
+          </TabItem>
+        </TabControl>
+      </StackPanel>
+    </ScrollViewer>
+  </Border>
+</UserControl>

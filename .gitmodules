@@ -1,0 +1,3 @@
+[submodule "external/Matgate"]
+	path = external/Matgate
+	url = https://github.com/Real-TTX/Matgate.git
