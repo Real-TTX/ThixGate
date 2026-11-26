@@ -116,7 +116,8 @@ public static class TransferService
                 continue;
             }
 
-            var viaMatgate = connection.Via == ConnectVia.Matgate && connection.MatgateAccountId is { } account && accounts.Contains(account);
+            var viaMatgate = connection.Via == ConnectVia.Matgate && connection.MatgateAccountId is { } account && accounts.Contains(account)
+                && connection.MatgateConnectionId is not null;
             LibraryService.SaveConnection(connection with
             {
                 FolderId = connection.FolderId is { } folderId && knownFolders.Contains(folderId) ? folderId : null,

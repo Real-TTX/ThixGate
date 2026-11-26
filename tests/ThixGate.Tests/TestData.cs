@@ -19,11 +19,13 @@ internal sealed class TestData : IDisposable
         AppPaths.UseDirectoryForTests(Folder);
         SettingsStore.Reset();
         LibraryStore.Reset();
+        MatgateStore.Reset();
         TokenStore.UseMemoryForTests(true);
         CloudHandoff.Folder = Path.Combine(Folder, "handoff"); // never the sign-in a real ThixLauncher left
         AccessPolicy.UsePolicyReaderForTests(_ => false);
         CloudClient.HandlerForTests = null;
         MatgateService.HandlerForTests = null;
+        MatgateRelay.ConnectForTests = null;
         CloudSyncService.ResetForTests();
     }
 
@@ -32,6 +34,8 @@ internal sealed class TestData : IDisposable
     public void Dispose()
     {
         CloudSyncService.Stop();
+        MatgateRelay.CloseAll();
+        MatgateRelay.ConnectForTests = null;
         CloudClient.HandlerForTests = null;
         MatgateService.HandlerForTests = null;
         AccessPolicy.UsePolicyReaderForTests(null);
@@ -39,6 +43,7 @@ internal sealed class TestData : IDisposable
         CloudHandoff.Folder = CloudHandoff.DefaultFolder();
         SettingsStore.Reset();
         LibraryStore.Reset();
+        MatgateStore.Reset();
         AppPaths.UseDirectoryForTests(null);
         AppClock.Pin(null);
         try

@@ -121,7 +121,7 @@ internal sealed class TrayIcon : IDisposable
         {
             var id = connection.Id;
             var (protocol, _) = Protocols.Of(connection.Protocol);
-            _menu.AddOwn($"   {MenuName(connection.Name)} ({protocol})", () => Connect(id));
+            _menu.AddOwn($"   {MenuName(connection.Name)} ({protocol})", () => _ = ConnectAsync(id));
         }
 
         _menu.AddOwn("   Alle Verbindungen …", () => _app.ShowMainWindow(window => window.ShowConnections()));
@@ -129,7 +129,7 @@ internal sealed class TrayIcon : IDisposable
         _menu.AddOwn("Neue Verbindung …", () => _app.ShowMainWindow(window => window.ShowConnectionForm(null)), enabled: !AccessPolicy.IsConfigurationLocked);
     }
 
-    private void Connect(Guid connectionId)
+    private async Task ConnectAsync(Guid connectionId)
     {
         if (LibraryService.FindConnection(connectionId) is not { } connection)
         {
@@ -138,7 +138,7 @@ internal sealed class TrayIcon : IDisposable
 
         try
         {
-            SessionLauncher.Open(connection, null);
+            await SessionLauncher.OpenAsync(connection, null);
         }
         catch (BusinessException exception)
         {

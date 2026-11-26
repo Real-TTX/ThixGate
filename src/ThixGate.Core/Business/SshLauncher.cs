@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using ThixGate.Core.Infrastructure;
 using ThixGate.Core.Models;
 
@@ -11,8 +12,11 @@ namespace ThixGate.Core.Business;
 /// </summary>
 public static class SshLauncher
 {
-    /// <summary>The ssh arguments of a connection (user@host, port, key file).</summary>
-    public static IReadOnlyList<string> Arguments(RemoteConnection connection)
+    /// <summary>
+    /// The ssh arguments of a connection (user@host, port, key file). Through a relay (<paramref name="through"/>) ssh goes to the local
+    /// port, and HostKeyAlias keeps the host key under the host's own name: known_hosts stays right, and a wrong key still shows.
+    /// </summary>
+    public static IReadOnlyList<string> Arguments(RemoteConnection connection, IPEndPoint? through = null)
     {
         if (connection.Protocol != ConnectionProtocol.Ssh)
         {
@@ -21,10 +25,17 @@ public static class SshLauncher
 
         var login = SessionTargets.LoginOf(connection);
         var arguments = new List<string>();
-        if (connection.EffectivePort != 22)
+        var port = through?.Port ?? connection.EffectivePort;
+        if (port != 22)
         {
             arguments.Add("-p");
-            arguments.Add(connection.EffectivePort.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            arguments.Add(port.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        if (through is not null)
+        {
+            arguments.Add("-o");
+            arguments.Add("HostKeyAlias=" + connection.Host);
         }
 
         if (connection.KeyFile.Length > 0)
@@ -33,28 +44,25 @@ public static class SshLauncher
             arguments.Add(connection.KeyFile);
         }
 
-        arguments.Add(login.UserName.Length > 0 ? $"{login.UserName}@{connection.Host}" : connection.Host);
+        var host = through?.Address.ToString() ?? connection.Host;
+        arguments.Add(login.UserName.Length > 0 ? $"{login.UserName}@{host}" : host);
         return arguments;
     }
 
     /// <summary>The command as a person would type it (shown in the UI, used in terminals that take one line).</summary>
-    public static string CommandLine(RemoteConnection connection) =>
-        "ssh " + string.Join(' ', Arguments(connection).Select(Quote));
+    public static string CommandLine(RemoteConnection connection, IPEndPoint? through = null) =>
+        "ssh " + string.Join(' ', Arguments(connection, through).Select(Quote));
 
-    /// <summary>Opens the terminal.</summary>
-    public static void Open(RemoteConnection connection)
+    /// <summary>Opens the terminal - for a connection "über Matgate" after opening its relay.</summary>
+    public static async Task OpenAsync(RemoteConnection connection, CancellationToken cancellationToken = default)
     {
-        if (connection.Via == ConnectVia.Matgate)
-        {
-            throw new BusinessException("Verbinden über Matgate kommt mit der App-Schnittstelle von Matgate – bis dahin bitte „Direkt“ wählen.");
-        }
-
         if (connection.KeyFile.Length > 0 && !File.Exists(connection.KeyFile))
         {
             throw new BusinessException($"Die Schlüsseldatei {connection.KeyFile} gibt es nicht.", nameof(RemoteConnection.KeyFile));
         }
 
-        var command = CommandLine(connection);
+        var through = connection.Via == ConnectVia.Matgate ? await MatgateRelay.OpenAsync(connection, cancellationToken) : null;
+        var command = CommandLine(connection, through);
         var custom = SettingsService.Get().SshTerminal.Trim();
         try
         {
@@ -72,12 +80,12 @@ public static class SshLauncher
                 var windowsTerminal = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "WindowsApps", "wt.exe");
                 if (File.Exists(windowsTerminal))
                 {
-                    Start(windowsTerminal, ["new-tab", "--title", connection.Name, "ssh", .. Arguments(connection)]);
+                    Start(windowsTerminal, ["new-tab", "--title", connection.Name, "ssh", .. Arguments(connection, through)]);
                 }
                 else
                 {
                     var startInfo = new ProcessStartInfo("ssh.exe") { UseShellExecute = true };
-                    foreach (var argument in Arguments(connection))
+                    foreach (var argument in Arguments(connection, through))
                     {
                         startInfo.ArgumentList.Add(argument);
                     }
@@ -87,7 +95,7 @@ public static class SshLauncher
             }
             else
             {
-                Start("x-terminal-emulator", ["-e", "ssh", .. Arguments(connection)]);
+                Start("x-terminal-emulator", ["-e", "ssh", .. Arguments(connection, through)]);
             }
         }
         catch (System.ComponentModel.Win32Exception exception)

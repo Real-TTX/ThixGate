@@ -119,7 +119,7 @@ public sealed class SyncTests : IDisposable
         MatgateService.HandlerForTests = () => new Answer("<html>nope</html>");
         Assert.False((await MatgateService.CheckAsync(account.ServerUrl)).IsMatgate);
 
-        var connection = LibraryService.SaveConnection(new RemoteConnection { Name = "ERP", Host = "erp", Via = ConnectVia.Matgate, MatgateAccountId = account.Id });
+        var connection = LibraryService.SaveConnection(new RemoteConnection { Name = "ERP", Host = "erp", Via = ConnectVia.Matgate, MatgateAccountId = account.Id, MatgateConnectionId = Guid.NewGuid() });
         MatgateService.Delete(account.Id);
         Assert.Equal(ConnectVia.Direct, LibraryService.FindConnection(connection.Id)!.Via);
 

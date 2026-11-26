@@ -190,7 +190,7 @@ internal static class LibraryStore
         }
     }
 
-    private static void WriteAtomically(string path, string text)
+    internal static void WriteAtomically(string path, string text)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporaryPath = path + ".tmp";

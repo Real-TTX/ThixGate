@@ -334,7 +334,7 @@ public static partial class LibraryService
             _ => normalized with { KeyFile = "" },
         };
 
-        return normalized.Via == ConnectVia.Direct ? normalized with { MatgateAccountId = null } : normalized;
+        return normalized.Via == ConnectVia.Direct ? normalized with { MatgateAccountId = null, MatgateConnectionId = null } : normalized;
     }
 
     private static void Validate(RemoteConnection connection, LibraryData data)
@@ -405,6 +405,12 @@ public static partial class LibraryService
             if (connection.MatgateAccountId is not { } accountId || SettingsService.Get().MatgateAccounts.All(account => account.Id != accountId))
             {
                 throw new BusinessException("Bitte wählen Sie das Matgate, über das verbunden wird.", nameof(RemoteConnection.MatgateAccountId));
+            }
+
+            // Matgate opens only host and port of one of its connections (no open proxy): which one, is part of the connection.
+            if (connection.MatgateConnectionId is null)
+            {
+                throw new BusinessException("Bitte wählen Sie die Verbindung in Matgate, über die verbunden wird.", nameof(RemoteConnection.MatgateConnectionId));
             }
         }
     }

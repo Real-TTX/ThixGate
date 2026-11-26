@@ -31,6 +31,7 @@ public partial class App : Application
     private MatSingleInstance? _instance;
     private TrayIcon? _trayIcon;
     private MainWindow? _mainWindow;
+    private readonly CancellationTokenSource _matgateLoop = new();
     private bool _isExiting;
 
     /// <summary>The program file; the autostart entry points to it.</summary>
@@ -90,6 +91,23 @@ public partial class App : Application
     /// </summary>
     private void EndProcess(int exitCode) => Dispatcher.UIThread.Post(() => _desktop?.Shutdown(exitCode));
 
+    /// <summary>Keeps the libraries of the signed-in Matgate accounts current: at the start and every five minutes.</summary>
+    private static async Task KeepMatgateLibrariesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Run(() => MatgateService.RefreshAllAsync(cancellationToken), cancellationToken);
+                await Task.Delay(TimeSpan.FromMinutes(5), cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // ThixGate ends.
+        }
+    }
+
     /// <summary>Installed by ThixLauncher: its sign-in at MatCloud goes along (in the background; a cloud that does not answer changes nothing).</summary>
     private async Task ConnectFromLauncherAsync()
     {
@@ -118,6 +136,7 @@ public partial class App : Application
         _trayIcon = new TrayIcon(this);
 
         CloudSyncService.Start();
+        _ = KeepMatgateLibrariesAsync(_matgateLoop.Token);
         _ = ConnectFromLauncherAsync();
 
         var startHidden = args.Contains(TrayArgument) || args.Contains(AutostartService.StartupArgument);
@@ -215,6 +234,11 @@ public partial class App : Application
 
         Step("sessions", Sessions.SessionWindow.CloseAll);
         Step("cloud sync", CloudSyncService.Stop);
+        Step("matgate", () =>
+        {
+            _matgateLoop.Cancel();
+            MatgateRelay.CloseAll();
+        });
         Step("tray icon", () => _trayIcon?.Dispose());
         if (_mainWindow is not null)
         {

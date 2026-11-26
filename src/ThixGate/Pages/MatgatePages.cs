@@ -8,18 +8,21 @@ using ThixGate.Controls;
 using ThixGate.Core.Business;
 using ThixGate.Core.Models;
 using ThixGate.Dialogs;
+using ThixGate.Sessions;
 
 namespace ThixGate.Pages;
 
 /// <summary>
-/// "Matgate": the Matgate servers this computer knows (optional - ThixGate works without). Each row: name, address, the version of the
-/// last check and how many connections go through it. Below: Matgate hinzufügen, Bearbeiten, Prüfen, Im Browser öffnen … Entfernen.
+/// "Matgate": the Matgate servers this computer knows (optional - ThixGate works without). Each row: name, address, who is signed in,
+/// how many connections Matgate gives and how many go through it. Below: Matgate hinzufügen, Bearbeiten, Anmelden, Prüfen, Im Browser
+/// öffnen … Entfernen.
 /// </summary>
 public sealed class MatgatePage : UserControl
 {
     private readonly ListLayout<MatgateAccount> _layout;
     private readonly Button _new = Ui.Button("plus", "Matgate hinzufügen", "MatButton.Primary");
     private readonly Button _edit = Ui.Button("edit", "Bearbeiten");
+    private readonly Button _signIn = Ui.Button("login", "Anmelden");
     private readonly Button _check = Ui.Button("plug", "Prüfen");
     private readonly Button _open = Ui.Button("external", "Im Browser öffnen");
     private readonly Button _delete = Ui.Button("trash", "Entfernen", "MatButton.Danger");
@@ -27,10 +30,10 @@ public sealed class MatgatePage : UserControl
     public MatgatePage()
     {
         _layout = new ListLayout<MatgateAccount>("Matgate",
-            "Matgate ist ein Gateway für Remote-Verbindungen im Browser. ThixGate kann Verbindungen über ein Matgate führen, wenn das Ziel nur von dort erreichbar ist; als Nächstes kommen die Bibliothek aus Matgate und die Durchleitung über seine App-Schnittstelle.",
+            "Matgate ist ein Gateway für Remote-Verbindungen im Browser. Angemeldet zeigt ThixGate die Verbindungen, mit denen du dort arbeiten darfst, und verbindet sich über Matgate mit ihnen – mit eigener Engine und den Passwörtern von diesem Computer.",
             "Name oder Adresse suchen", "Matgate-Konten", Row);
         _layout.Toolbar.Changed += (_, _) => Refresh();
-        _layout.Actions.Children.AddRange([_new, _edit, _check, _open, _delete]);
+        _layout.Actions.Children.AddRange([_new, _edit, _signIn, _check, _open, _delete]);
         ActionBar.SetSeparated(_delete, true);
         _layout.SelectionChanged += (_, _) => ApplyButtons();
         _layout.ItemActivated += (_, account) => Ui.MainOf(this)?.ShowMatgateForm(account.Id);
@@ -40,6 +43,13 @@ public sealed class MatgatePage : UserControl
             if (_layout.SelectedItem is { } account)
             {
                 Ui.MainOf(this)?.ShowMatgateForm(account.Id);
+            }
+        };
+        _signIn.Click += async (_, _) =>
+        {
+            if (_layout.SelectedItem is { } account)
+            {
+                await MatgateForm.SignInOrOutAsync(this, account, _layout.Message.Show);
             }
         };
         _check.Click += async (_, _) =>
@@ -119,20 +129,27 @@ public sealed class MatgatePage : UserControl
         var allowed = !AccessPolicy.IsConfigurationLocked && !AccessPolicy.IsMatgateDisabled;
         _new.IsEnabled = allowed;
         _edit.IsEnabled = account is not null;
-        _check.IsEnabled = _open.IsEnabled = account is not null && !AccessPolicy.IsMatgateDisabled;
+        _check.IsEnabled = _open.IsEnabled = _signIn.IsEnabled = account is not null && !AccessPolicy.IsMatgateDisabled;
+        _signIn.Content = new IconLabel { Icon = account?.IsSignedIn == true ? "logout" : "login", Text = account?.IsSignedIn == true ? "Abmelden" : "Anmelden" };
         _delete.IsEnabled = account is not null && !AccessPolicy.IsConfigurationLocked;
     }
 
     private static Control Row(MatgateAccount account)
     {
         var through = LibraryService.Connections().Count(connection => connection.MatgateAccountId == account.Id);
+        var library = account.IsSignedIn ? MatgateService.Library(account.Id) : null;
         var details = new List<string> { account.ServerUrl };
-        if (account.UserName.Length > 0)
+        if (account.IsSignedIn)
         {
-            details.Add(account.UserName);
+            details.Add(account.DisplayName.Length > 0 && account.DisplayName != account.UserName ? $"{account.DisplayName} ({account.UserName})" : account.UserName);
         }
 
-        details.Add(through == 1 ? "1 Verbindung darüber" : $"{through} Verbindungen darüber");
+        if (library is not null)
+        {
+            details.Add(library.Connections.Count == 1 ? "1 Verbindung in Matgate" : $"{library.Connections.Count} Verbindungen in Matgate");
+        }
+
+        details.Add(through == 1 ? "1 eigene darüber" : $"{through} eigene darüber");
         var text = new StackPanel
         {
             Margin = new Thickness(16, 0),
@@ -144,10 +161,14 @@ public sealed class MatgatePage : UserControl
                 new TextBlock { Text = string.Join(" · ", details), TextTrimming = TextTrimming.CharacterEllipsis }.Themed("MatText.Muted"),
             },
         };
-        var state = account.LastChecked is { } checkedAt
-            ? new StatePill(account.LastVersion.Length > 0 ? $"Matgate {account.LastVersion}" : "Erreichbar", "check", Tone.Success)
-            : new StatePill("Nicht geprüft", "help-circle", Tone.Muted);
-        ToolTip.SetTip(state, account.LastChecked is { } at ? $"Zuletzt geprüft {Formats.When(at)}" : null);
+        var state = account.IsSignedIn
+            ? new StatePill("Angemeldet", "check", Tone.Success)
+            : account.LastChecked is not null
+                ? new StatePill(account.LastVersion.Length > 0 ? $"Matgate {account.LastVersion}" : "Erreichbar", "plug", Tone.Muted)
+                : new StatePill("Nicht angemeldet", "help-circle", Tone.Muted);
+        ToolTip.SetTip(state, account.IsSignedIn
+            ? $"Bibliothek zuletzt gelesen {Formats.When(account.LibraryFetched)}"
+            : account.LastChecked is { } at ? $"Zuletzt geprüft {Formats.When(at)}" : null);
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), MinHeight = 52 };
         row.Children.Add(Ui.IconTile("server", 44, 22));
         row.Children.Add(Ui.Cell(text, 0, 1));
@@ -156,14 +177,24 @@ public sealed class MatgatePage : UserControl
     }
 }
 
-/// <summary>Add / edit a Matgate: name, address, user. Buttons: Speichern, Prüfen, Zurück … Entfernen.</summary>
+/// <summary>
+/// Add / edit a Matgate. Tabs: Allgemein (name, address, sign-in) | Verbindungen (Matgate's library: Verbinden, In Bibliothek
+/// übernehmen, Aktualisieren). Buttons: Speichern, Anmelden/Abmelden, Prüfen, Zurück … Entfernen.
+/// </summary>
 public sealed class MatgateForm : UserControl
 {
     private readonly EditLayout _layout = new();
     private readonly TextBox _name = new() { Watermark = "Matgate Büro" };
     private readonly TextBox _url = new() { Watermark = "https://matgate.example.com" };
-    private readonly TextBox _user = new();
+    private readonly TextBlock _signInState = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly Button _signIn = Ui.Button("login", "Anmelden");
     private readonly Button _check = Ui.Button("plug", "Prüfen");
+    private readonly DataTable<MatgateConnectionItem> _connections = new("Verbindungen in Matgate") { Height = 340 };
+    private readonly TextBlock _libraryState = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly Button _connect = Ui.Button("play", "Verbinden", "MatButton.Primary");
+    private readonly Button _takeOver = Ui.Button("download", "In Bibliothek übernehmen");
+    private readonly Button _reload = Ui.Button("refresh", "Aktualisieren");
+    private readonly TabItem _connectionsTab;
     private MatgateAccount? _existing;
 
     public MatgateForm()
@@ -171,13 +202,43 @@ public sealed class MatgateForm : UserControl
         AutomationProperties.SetName(_name, "Name");
         AutomationProperties.SetName(_url, "Adresse");
         var general = _layout.AddTab("Allgemein");
+        _connectionsTab = _layout.AddTab("Verbindungen");
         EditLayout.ColumnOf(general).Children.AddRange(
         [
             _layout.Fields.Add(nameof(MatgateAccount.Name), "Name", _name, tab: general),
             _layout.Fields.Add(nameof(MatgateAccount.ServerUrl), "Adresse", _url, "Die Adresse, unter der du Matgate im Browser öffnest.", general),
-            _layout.Fields.Add(nameof(MatgateAccount.UserName), "Benutzer", _user, "Dein Benutzer in Matgate (für die spätere App-Anmeldung).", general),
+            FormFields.Row("Anmeldung", "Anmelden öffnet Matgate im Browser: dort meldest du dich wie gewohnt an und lässt ThixGate auf diesem Computer zu. Abmelden geht auch in Matgate unter Einstellungen › Sicherheit › Geräte.", _signInState, isLast: true),
         ]);
-        _layout.Extra.Children.Add(_check);
+
+        _connections
+            .AddColumn("Name", "2*", item => DataTable<MatgateConnectionItem>.TextCell(item.Name, isStrong: true))
+            .AddColumn("Protokoll", "110", item => DataTable<MatgateConnectionItem>.TextCell(item.ProtocolKind is { } kind ? Protocols.Of(kind).Name : item.Protocol))
+            .AddColumn("Adresse", "2*", item => DataTable<MatgateConnectionItem>.TextCell(item.Port > 0 ? $"{item.Host}:{item.Port}" : item.Host))
+            .AddColumn("Ordner", "1.5*", item => DataTable<MatgateConnectionItem>.TextCell(item.Folder.Length > 0 ? item.Folder.Replace("/", " › ") : "–", "Mat.TextMuted"))
+            .AddColumn("Eigene", "120", item => DataTable<MatgateConnectionItem>.TextCell(_existing is { } account && MatgateService.TakenOver(account.Id, item.Id) is not null ? "übernommen" : "–", "Mat.TextMuted"));
+        _connections.SelectionChanged += (_, _) => ApplyLibraryButtons();
+        _connections.ItemActivated += async (_, item) => await ConnectAsync(item);
+        var libraryActions = new ActionBar { Children = { _connect, _takeOver, _reload } };
+        EditLayout.ColumnOf(_connectionsTab).Children.AddRange([_libraryState, _connections, libraryActions]);
+        _connect.Click += async (_, _) =>
+        {
+            if (_connections.SelectedItem is { } item)
+            {
+                await ConnectAsync(item);
+            }
+        };
+        _takeOver.Click += (_, _) => TakeOver();
+        _reload.Click += async (_, _) => await ReloadAsync();
+
+        _layout.Extra.Children.AddRange([_signIn, _check]);
+        _signIn.Click += async (_, _) =>
+        {
+            if (Persist() is { } account)
+            {
+                await SignInOrOutAsync(this, account, _layout.Message.Show);
+                Load(account.Id);
+            }
+        };
         _check.Click += async (_, _) =>
         {
             try
@@ -192,10 +253,9 @@ public sealed class MatgateForm : UserControl
         };
         _layout.Save.Click += (_, _) =>
         {
-            MatgateAccount? saved = null;
-            if (_layout.Run(() => saved = MatgateService.Save(Collect())))
+            if (Persist() is { } saved)
             {
-                Closed?.Invoke($"„{saved!.Name}“ wurde gespeichert.");
+                Closed?.Invoke($"„{saved.Name}“ wurde gespeichert.");
             }
         };
         _layout.Back.Click += (_, _) => Closed?.Invoke(null);
@@ -218,26 +278,66 @@ public sealed class MatgateForm : UserControl
 
     public TextBox UrlBox => _url;
 
+    public DataTable<MatgateConnectionItem> Connections => _connections;
+
     public void Load(Guid? accountId)
     {
         _layout.Reset();
         _existing = accountId is { } id ? MatgateService.Find(id) : null;
         _name.Text = _existing?.Name ?? "";
         _url.Text = _existing?.ServerUrl ?? "";
-        _user.Text = _existing?.UserName ?? "";
         _layout.SetHead("server", _existing?.Name ?? "Matgate hinzufügen", _existing?.ServerUrl ?? "Ein Matgate als Gateway");
         _layout.Delete.IsVisible = _existing is not null;
         var allowed = !AccessPolicy.IsConfigurationLocked && !AccessPolicy.IsMatgateDisabled;
         _layout.Save.IsEnabled = _check.IsEnabled = allowed;
+        _signIn.IsEnabled = !AccessPolicy.IsMatgateDisabled && (allowed || _existing is not null);
         _layout.Delete.IsEnabled = !AccessPolicy.IsConfigurationLocked;
+        var signedIn = _existing?.IsSignedIn == true;
+        _signIn.Content = new IconLabel { Icon = signedIn ? "logout" : "login", Text = signedIn ? "Abmelden" : "Anmelden" };
+        _signInState.Text = signedIn
+            ? $"Angemeldet als {(_existing!.DisplayName.Length > 0 ? _existing.DisplayName : _existing.UserName)} ({_existing.UserName}) – dieser Computer heißt dort „{Core.Infrastructure.AppInfo.MachineName}“."
+            : "Nicht angemeldet.";
+        _connectionsTab.IsVisible = signedIn;
+        ShowLibrary();
+    }
+
+    /// <summary>Signs in (browser) or out, with the messages on <paramref name="show"/>.</summary>
+    public static async Task SignInOrOutAsync(Control owner, MatgateAccount account, Action<string, InfoSeverity> show)
+    {
+        try
+        {
+            if (account.IsSignedIn)
+            {
+                if (!await ConfirmDialog.AskAsync(Ui.WindowOf(owner), "Abmelden?",
+                        $"Dieser Computer wird bei „{account.Name}“ abgemeldet. Eigene Verbindungen über dieses Matgate verbinden erst nach einer neuen Anmeldung wieder.",
+                        "Abmelden"))
+                {
+                    return;
+                }
+
+                await MatgateService.SignOutAsync(account.Id);
+                show($"Bei „{account.Name}“ abgemeldet.", InfoSeverity.Success);
+                return;
+            }
+
+            show($"Bitte im Browser bei „{account.Name}“ anmelden und ThixGate zulassen …", InfoSeverity.Info);
+            var signedIn = await MatgateService.SignInAsync(account.Id, Ui.OpenExternal);
+            var library = await MatgateService.RefreshLibraryAsync(account.Id);
+            show($"Bei „{account.Name}“ angemeldet als {signedIn.UserName}: {(library.Connections.Count == 1 ? "1 Verbindung" : $"{library.Connections.Count} Verbindungen")}.", InfoSeverity.Success);
+        }
+        catch (BusinessException exception)
+        {
+            show(exception.Message, InfoSeverity.Error);
+        }
     }
 
     public static async Task<bool> DeleteAsync(Control owner, MatgateAccount account, Action<string, InfoSeverity> show)
     {
         var through = LibraryService.Connections().Count(connection => connection.MatgateAccountId == account.Id);
         var message = through == 0
-            ? $"„{account.Name}“ wird von diesem Computer entfernt. In Matgate selbst ändert sich nichts."
-            : $"„{account.Name}“ wird entfernt. {through} Verbindung(en) verbinden danach wieder direkt. In Matgate selbst ändert sich nichts.";
+            ? $"„{account.Name}“ wird von diesem Computer entfernt."
+            : $"„{account.Name}“ wird entfernt. {through} Verbindung(en) verbinden danach wieder direkt.";
+        message += account.IsSignedIn ? " Dieser Computer meldet sich dort ab." : " In Matgate selbst ändert sich nichts.";
         if (!await ConfirmDialog.AskAsync(Ui.WindowOf(owner), "Matgate entfernen?", message, "Entfernen", isDestructive: true))
         {
             return false;
@@ -245,6 +345,11 @@ public sealed class MatgateForm : UserControl
 
         try
         {
+            if (account.IsSignedIn)
+            {
+                await MatgateService.SignOutAsync(account.Id);
+            }
+
             MatgateService.Delete(account.Id);
             show($"„{account.Name}“ wurde entfernt.", InfoSeverity.Success);
             return true;
@@ -256,10 +361,98 @@ public sealed class MatgateForm : UserControl
         }
     }
 
+    // Saves the form (a new account needs to exist before it can sign in); null when a field is wrong.
+    private MatgateAccount? Persist()
+    {
+        MatgateAccount? saved = null;
+        if (_existing is not null && AccessPolicy.IsConfigurationLocked)
+        {
+            return _existing;
+        }
+
+        return _layout.Run(() => saved = MatgateService.Save(Collect())) ? _existing = saved : null;
+    }
+
+    private void ShowLibrary()
+    {
+        var library = _existing is { IsSignedIn: true } account ? MatgateService.Library(account.Id) : null;
+        _connections.SetItems(library?.Connections ?? [], item => item.Id);
+        _connections.EmptyText = library is null ? "Noch nicht gelesen – „Aktualisieren“ holt die Verbindungen." : "Matgate gibt dir keine Remote-Desktops oder Terminals.";
+        _libraryState.Text = library is null
+            ? ""
+            : $"Die Remote-Desktops und Terminals, mit denen du in Matgate arbeiten darfst – ohne Passwörter. Zuletzt gelesen {Formats.When(_existing!.LibraryFetched)}.";
+        ApplyLibraryButtons();
+    }
+
+    private void ApplyLibraryButtons()
+    {
+        var item = _connections.SelectedItem;
+        _connect.IsEnabled = item?.ProtocolKind is not null;
+        _takeOver.IsEnabled = item is not null && !AccessPolicy.IsConfigurationLocked
+            && (_existing is not { } account || MatgateService.TakenOver(account.Id, item.Id) is null);
+        _reload.IsEnabled = _existing?.IsSignedIn == true;
+    }
+
+    private async Task ConnectAsync(MatgateConnectionItem item)
+    {
+        if (_existing is not { } account)
+        {
+            return;
+        }
+
+        try
+        {
+            await SessionLauncher.OpenAsync(MatgateService.TakenOver(account.Id, item.Id) ?? MatgateService.AsConnection(account.Id, item), Ui.WindowOf(this));
+        }
+        catch (BusinessException exception)
+        {
+            _layout.Message.Show(exception.Message, InfoSeverity.Error);
+        }
+    }
+
+    private void TakeOver()
+    {
+        if (_existing is not { } account || _connections.SelectedItem is not { } item)
+        {
+            return;
+        }
+
+        try
+        {
+            var connection = MatgateService.TakeOver(account.Id, item.Id);
+            _layout.Message.Show($"„{connection.Name}“ steht jetzt in der eigenen Bibliothek und verbindet über „{account.Name}“.", InfoSeverity.Success);
+            ShowLibrary();
+        }
+        catch (BusinessException exception)
+        {
+            _layout.Message.Show(exception.Message, InfoSeverity.Error);
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (_existing is not { } account)
+        {
+            return;
+        }
+
+        try
+        {
+            var library = await MatgateService.RefreshLibraryAsync(account.Id);
+            _existing = MatgateService.Find(account.Id);
+            ShowLibrary();
+            _layout.Message.Show(library.Connections.Count == 1 ? "1 Verbindung aus Matgate." : $"{library.Connections.Count} Verbindungen aus Matgate.", InfoSeverity.Success);
+        }
+        catch (BusinessException exception)
+        {
+            _layout.Message.Show(exception.Message, InfoSeverity.Error);
+            Load(account.Id);
+        }
+    }
+
     private MatgateAccount Collect() => (_existing ?? new MatgateAccount()) with
     {
         Name = _name.Text ?? "",
         ServerUrl = _url.Text ?? "",
-        UserName = _user.Text ?? "",
     };
 }

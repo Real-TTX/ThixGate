@@ -22,13 +22,32 @@ public static class SampleData
     public static readonly Guid RaspberryId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000025");
     public static readonly Guid BuildAgentId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000026");
     public static readonly Guid MatgateAccountId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000031");
+    public static readonly Guid MatgateDeviceId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000032");
+    public static readonly Guid MatgateErpId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000041");
+    public static readonly Guid MatgateSqlId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000042");
+    public static readonly Guid MatgateGitId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000043");
 
     /// <summary>Writes the sample library (the data folder must be a fresh one).</summary>
     public static void Create()
     {
         var now = AppClock.UtcNow;
         MatgateService.Save(new MatgateAccount { Id = MatgateAccountId, Name = "Matgate Büro", ServerUrl = "https://matgate.example.com", UserName = "anna" });
-        SettingsService.UpdateMatgateAccounts(list => [.. list.Select(account => account with { LastChecked = now.AddHours(-2), LastVersion = "0.55.1" })]);
+        SettingsService.UpdateMatgateAccounts(list => [.. list.Select(account => account with
+        {
+            LastChecked = now.AddHours(-2), LastVersion = "0.56.0", DeviceId = MatgateDeviceId, DisplayName = "Anna Schmidt", LibraryFetched = now.AddMinutes(-4),
+        })]);
+        MatgateStore.Write(MatgateAccountId, new MatgateLibrary
+        {
+            Revision = "sample",
+            User = new MatgateLibraryUser { UserName = "anna", DisplayName = "Anna Schmidt" },
+            Folders = [new() { Path = "Kunden", Name = "Kunden" }, new() { Path = "Kunden/Müller GmbH", Name = "Müller GmbH", Parent = "Kunden" }, new() { Path = "Rechenzentrum", Name = "Rechenzentrum" }],
+            Connections =
+            [
+                new() { Id = MatgateErpId, Name = "ERP Müller", Protocol = "rdp", Host = "erp.mueller-gmbh.de", Port = 3390, UserName = "support", Domain = "MUELLER", Folder = "Kunden/Müller GmbH", Level = "Connect", KeyboardLayout = "de-de-qwertz", HasStoredLogin = true },
+                new() { Id = MatgateSqlId, Name = "SQL-Server", Protocol = "rdp", Host = "sql01.rz.local", Port = 3389, Folder = "Rechenzentrum", Level = "Edit", KeyboardLayout = "de-de-qwertz" },
+                new() { Id = MatgateGitId, Name = "Git", Protocol = "ssh", Host = "git.rz.local", Port = 22, UserName = "git", Folder = "Rechenzentrum", Level = "Connect" },
+            ],
+        });
 
         LibraryService.SaveFolder(new RemoteFolder { Id = OfficeFolderId, Name = "Büro" });
         LibraryService.SaveFolder(new RemoteFolder { Id = CustomersFolderId, Name = "Kunden" });
@@ -51,7 +70,8 @@ public static class SampleData
         LibraryService.SaveConnection(new RemoteConnection
         {
             Id = MuellerErpId, Name = "ERP Müller", Protocol = ConnectionProtocol.Rdp, Host = "erp.mueller-gmbh.de", Port = 3390, FolderId = MuellerFolderId,
-            UserName = "support", Domain = "MUELLER", Via = ConnectVia.Matgate, MatgateAccountId = MatgateAccountId, Tags = "Kunde",
+            UserName = "support", Domain = "MUELLER", Via = ConnectVia.Matgate, MatgateAccountId = MatgateAccountId, MatgateConnectionId = MatgateErpId,
+            Tags = "Kunde",
         });
         LibraryService.SaveConnection(new RemoteConnection
         {

@@ -27,6 +27,9 @@ public static class AppPaths
 
     public static string LogDirectory => Path.Combine(DataDirectory, "logs");
 
+    /// <summary>The libraries of the Matgate accounts, one file each (read-only copies, per computer).</summary>
+    public static string MatgateDirectory => Path.Combine(DataDirectory, "matgate");
+
     /// <summary>True when a developer or a test pointed ThixGate to its own folder: it is then its own instance.</summary>
     public static bool HasOverride => _dataDirectoryOverride is not null;
 

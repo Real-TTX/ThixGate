@@ -59,7 +59,10 @@ public sealed record AppSettings
     public CloudSettings Cloud { get; init; } = new();
 }
 
-/// <summary>A Matgate server known to this computer. The device token of the app sign-in (stage 2) is stored protected, not here.</summary>
+/// <summary>
+/// A Matgate server known to this computer. After the app sign-in (Matgate's /app/authorize in the browser) it has a device there; the
+/// device token is stored protected (Windows DPAPI value in <see cref="ProtectedToken"/>, macOS Keychain), never in clear.
+/// </summary>
 public sealed record MatgateAccount
 {
     public Guid Id { get; init; } = Guid.NewGuid();
@@ -70,12 +73,27 @@ public sealed record MatgateAccount
     /// <summary>https://matgate.example.com</summary>
     public string ServerUrl { get; init; } = "";
 
+    /// <summary>The user in Matgate (filled in by the sign-in).</summary>
     public string UserName { get; init; } = "";
 
     public DateTimeOffset? LastChecked { get; init; }
 
     /// <summary>The version Matgate answered at the last check.</summary>
     public string LastVersion { get; init; } = "";
+
+    /// <summary>This computer's device in Matgate (Konto › Sicherheit › Geräte); null: not signed in.</summary>
+    public Guid? DeviceId { get; init; }
+
+    /// <summary>The name Matgate shows for the signed-in user.</summary>
+    public string DisplayName { get; init; } = "";
+
+    /// <summary>The device token, protected for this user (Windows DPAPI); on macOS it lives in the Keychain.</summary>
+    public string ProtectedToken { get; init; } = "";
+
+    /// <summary>When the library was last read from Matgate.</summary>
+    public DateTimeOffset? LibraryFetched { get; init; }
+
+    public bool IsSignedIn => DeviceId is not null;
 }
 
 /// <summary>The connection to ThixCloud (MatCloud). The device token is stored protected (DPAPI / Keychain), not in here.</summary>

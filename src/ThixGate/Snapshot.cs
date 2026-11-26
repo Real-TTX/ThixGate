@@ -46,7 +46,7 @@ internal static class Snapshot
         "setup-welcome", "setup-options", "setup-progress", "setup-finish", "setup-update", "setup-uninstall",
         "main-connections",
         .. ConnectionTabs.Select(tab => $"main-connection-form-{tab}"),
-        "main-folders", "main-folder-form", "main-credentials", "main-credential-form", "main-matgate", "main-matgate-form",
+        "main-folders", "main-folder-form", "main-credentials", "main-credential-form", "main-matgate", "main-matgate-form", "main-matgate-connections",
         .. SettingsTabs.Select(tab => $"main-settings-{tab}"),
         "main-about", "main-folded", "toast",
     ];
@@ -241,6 +241,10 @@ internal static class Snapshot
         window.ShowMatgateForm(SampleData.MatgateAccountId);
         Settle(window);
         Save(window, folder, $"main-matgate-form-{theme}.png", report);
+        window.MatgateForm.Layout.Tabs.SelectedIndex = 1;
+        Settle(window);
+        Save(window, folder, $"main-matgate-connections-{theme}.png", report);
+        window.MatgateForm.Layout.Tabs.SelectedIndex = 0;
 
         // Einstellungen, every tab: ThixCloud with the address typed
         var settingsPage = window.SettingsPage;

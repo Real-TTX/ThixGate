@@ -71,12 +71,12 @@ public sealed class ConnectionsPage : UserControl
         _layout.Actions.Children.AddRange([_connect, _new, _edit, _duplicate, _import, _export, _delete]);
         ActionBar.SetSeparated(_delete, true);
         _layout.SelectionChanged += (_, _) => ApplyButtons();
-        _layout.ItemActivated += (_, connection) => Connect(connection);
-        _connect.Click += (_, _) =>
+        _layout.ItemActivated += async (_, connection) => await ConnectAsync(connection);
+        _connect.Click += async (_, _) =>
         {
             if (_layout.SelectedItem is { } connection)
             {
-                Connect(connection);
+                await ConnectAsync(connection);
             }
         };
         _new.Click += (_, _) => Ui.MainOf(this)?.ShowConnectionForm(null, FolderFilter);
@@ -211,11 +211,11 @@ public sealed class ConnectionsPage : UserControl
     }
 
     /// <summary>Opens the session of a connection (RDP/VNC: a session window; SSH: the terminal).</summary>
-    private void Connect(RemoteConnection connection)
+    private async Task ConnectAsync(RemoteConnection connection)
     {
         try
         {
-            SessionLauncher.Open(connection, Ui.WindowOf(this));
+            await SessionLauncher.OpenAsync(connection, Ui.WindowOf(this));
         }
         catch (BusinessException exception)
         {
@@ -356,10 +356,10 @@ public sealed class ConnectionsPage : UserControl
 
         var connect = Ui.Button("play", "Verbinden");
         AutomationProperties.SetName(connect, $"{connection.Name} verbinden");
-        connect.Click += (_, e) =>
+        connect.Click += async (_, e) =>
         {
             e.Handled = true;
-            Connect(connection);
+            await ConnectAsync(connection);
         };
 
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto"), MinHeight = 52 };

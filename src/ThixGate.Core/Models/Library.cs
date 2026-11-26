@@ -111,6 +111,12 @@ public sealed record RemoteConnection
     /// <summary>The Matgate account (<see cref="MatgateAccount.Id"/>) when <see cref="Via"/> is Matgate.</summary>
     public Guid? MatgateAccountId { get; init; }
 
+    /// <summary>
+    /// The connection in that Matgate the relay goes to (Matgate opens host and port of ITS connection - no open proxy). Login and
+    /// password stay ThixGate's own.
+    /// </summary>
+    public Guid? MatgateConnectionId { get; init; }
+
     // ---- Kept by the app ----
 
     public DateTimeOffset? LastUsed { get; init; }

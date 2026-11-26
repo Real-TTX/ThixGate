@@ -213,7 +213,7 @@ public sealed class SessionWindow : Window, IScreenHost
         IScreenBackend? backend = null;
         try
         {
-            var target = SessionTargets.ScreenTargetOf(_connection, login, _wantedWidth, _wantedHeight);
+            var target = await SessionTargets.ResolveAsync(_connection, login, _wantedWidth, _wantedHeight, token);
             backend = ScreenBackends.Create(target, this);
             _backend = backend;
             await backend.ConnectAsync(token);

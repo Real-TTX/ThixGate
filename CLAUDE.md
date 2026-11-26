@@ -9,7 +9,7 @@ VNC, SSH) and saved credentials in one library; Remote Desktop and VNC open in a
 system's terminal. **Matgate first:** the remote engine is Matgate's own (`Mat.Remote`, submodule `external/Matgate`), so a connection
 means the same in both and an engine fix lands once. ThixGate is the **on-premise** alternative: it needs no Matgate. Optional:
 **ThixCloud** (MatCloud, sibling repository `../MatCloud`, app id `gate`, general sync) keeps folders, connections and credentials –
-never a password – the same on every device; **Matgate** accounts (gateway, later the library and the relay of Matgate's app API, see
+never a password – the same on every device; **Matgate** accounts (app API of Matgate 0.56+: sign-in in the browser, its library, connecting through its relay; see
 `docs/thixgate-plan.md` in Matgate). UI language German; code, comments and identifiers English.
 
 Stack: **.NET 10**, C#, **Avalonia 11.3** with **MatDesktop** (the desktop toolkit of MatDesign, a COPY in `src/ThixGate/MatDesktop/`),
@@ -23,13 +23,17 @@ the app follows MatDesign's rules DESK, TRAY, SETUP.
   elsewhere `net10.0` (`DesktopTargetFramework`); `Mat.Remote` stays `net10.0`.
 - `dotnet test ThixGate.slnx`:
   - `tests/ThixGate.Tests` (no UI): library with every check and policy, vault, import/export (.thixgate.json, .rdp), engine targets,
-    SSH arguments, the sync of two computers against `FakeCloud`, Matgate accounts, setup/autostart/updates (`PlatformTests`).
+    SSH arguments, the sync of two computers against `FakeCloud`, Matgate (`MatgateTests`: sign-in with PKCE against a fake, library + ETag, take-over, relay), setup/autostart/updates (`PlatformTests`).
   - `tests/ThixGate.UiTests`: the UI headless (every page light/dark, the forms, toolbar, tray, snapshot, key map, the copies of MatDesktop
     and of MatCloud's contract unchanged, no window writes a colour of its own; `THIXGATE_SCREENSHOTS=<folder>` keeps screenshots).
   - `SessionEndToEndTests` (opt-in): real sessions against Matgate's test desktop (`external/Matgate/tests/desktop`: xrdp 3389, FreeRDP
     shadow with NLA 3390, TigerVNC 5901). `docker build -t thixgate-e2e-desktop external/Matgate/tests/desktop`,
     `docker run -d -p 13389:3389 -p 13390:3390 -p 15901:5901 thixgate-e2e-desktop`, then `THIXGATE_E2E_DESKTOP=127.0.0.1`,
     `THIXGATE_E2E_PORTS=13389,13390,15901`.
+  - `MatgateEndToEndTests` (opt-in): ThixGate against a real Matgate – sign-in through its pages, library, RDP/VNC sessions through its
+    relay into the test desktop. `THIXGATE_E2E_MATGATE=<address>`, `THIXGATE_E2E_MATGATE_USER`, `THIXGATE_E2E_MATGATE_PASSWORD` (a test
+    Matgate whose connections lead to the test desktop above; `dotnet run --project external/Matgate/Matgate` with `MATGATE_DATA_DIR`,
+    `MATGATE_ADMIN_USER/_PASSWORD`, `ASPNETCORE_URLS=http://127.0.0.1:18200` does).
   Tests never touch real data, the Keychain, the registry or LaunchAgents (`TestData`).
 - **Snapshots:** `dotnet run --project src/ThixGate -- --snapshot docs/images` draws every window headless (light, dark, 1x) from
   `SampleData` (Core: folders Büro, Kunden › Müller GmbH, Labor; credentials; RDP/VNC/SSH connections; a Matgate) with pinned clock
@@ -57,10 +61,12 @@ src/ThixGate.Core       (no UI) models, business layer (static classes), infrast
   Business/             LibraryService (folders + connections: checks, normalising per protocol, search/filter/sort/pages, tombstones,
                         Changed), CredentialService (the vault: passwords via TokenStore, never synced), SessionTargets (connection →
                         Mat.Remote ScreenTarget), SshLauncher (system terminal, no password on a command line), TransferService
-                        (*.thixgate.json without passwords, *.rdp), MatgateService (accounts, /health check), CloudSyncService (sign-in,
+                        (*.thixgate.json without passwords, *.rdp), MatgateService (accounts, /health, browser sign-in to /app/authorize,
+                        library copy, take-over), MatgateRelay (127.0.0.1 port → WebSocket /app/api/relay/<id>), CloudSyncService (sign-in,
                         loop push → pull → long poll) + CloudSyncItems (collections folders/connections/credentials), SettingsService,
                         AccessPolicy, AutostartService, InstallService, InstallerOptions, UpdateService, MacAppBundle, SampleData
-  Infrastructure/       LibraryStore (library.json + vault.json, atomic writes, the cloud's pending rows), SettingsStore, TokenStore
+  Infrastructure/       LibraryStore (library.json + vault.json, atomic writes, the cloud's pending rows), MatgateStore (matgate/<account>.json),
+                        LoopbackCallback (the browser comes back to 127.0.0.1), SettingsStore, TokenStore
                         (DPAPI / Keychain, per SecretKind: Cloud, Vault, Matgate), CloudClient, AppPaths, AppInfo, AppClock, Log,
                         ProblemReports
   Platform/             WindowActivation, Windows/ShellLink, Windows/EnvironmentChange
@@ -69,7 +75,7 @@ src/ThixGate            (Avalonia app)
   MainWindow            MatTitleBar (open sessions in the middle), MatNav: Verbindungen, Ordner, Zugangsdaten, Matgate | Einstellungen;
                         foot: cloud state, version = About. Forms on top with a back stack (Zurück/Esc). Ctrl/Cmd+1…4, +, , +N, +F, +B
   Pages/                ConnectionsPage + ConnectionForm (Allgemein | Anmeldung | Anzeige | Gateway | Notizen), FolderPages (list + form),
-                        CredentialPages (list + form with Verwendung), MatgatePages (list + form), SettingsPage (Allgemein | Sitzungen |
+                        CredentialPages (list + form with Verwendung), MatgatePages (list + form: Allgemein | Verbindungen), SettingsPage (Allgemein | Sitzungen |
                         ThixCloud | Updates | Erweitert), AboutPage
   Sessions/             SessionWindow (IScreenHost of Mat.Remote: draws the engine's picture into a WriteableBitmap on demand, pointer,
                         keys, sign-in dialog), KeyMap (PhysicalKey → scancode for RDP, keysym for VNC), SessionLauncher, NullScreenHost
@@ -89,7 +95,9 @@ tests/ThixGate.UiTests  the UI headless, the end-to-end sessions (opt-in)
 - **Secrets:** a password lives only in the vault (TokenStore: Windows DPAPI value in vault.json, macOS Keychain). Never in library.json,
   an export, the cloud, a log or a command line. The cloud gets `HasPassword = false`; "is a password here" is per computer.
 - **Sync rules:** general sync of MatCloud, app `gate`; last writer wins by UpdateDate; deletions are tombstones until the cloud has them;
-  "last used" stays per computer; a Matgate account is per computer (unknown here → the connection goes direct).
+  "last used" stays per computer; a Matgate account is per computer (unknown here → the connection goes direct). "Über Matgate" names
+  the account AND the connection in that Matgate (`MatgateConnectionId`): the relay opens only host and port of a Matgate connection.
+  The Matgate token and library copy never sync; Matgate never gets a password from ThixGate.
 - **Engine:** never fork Mat.Remote here – a change goes to Matgate first ("Matgate first") and arrives by moving the submodule.
 - **UI rules (the owner's):** CRUD = list page (`ListLayout`) + create/update page with delete (`EditLayout`); toolbar above lists
   (search, filter, sort); pager below the list; actions below, left-aligned, positive to negative, delete with a gap; buttons in one row

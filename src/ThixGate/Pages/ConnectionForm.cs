@@ -42,18 +42,22 @@ public sealed class ConnectionForm : UserControl
     private readonly ComboBox _keyboard = new() { ItemsSource = KeyboardLayouts.Select(layout => layout.Name).ToList(), MinWidth = 260 };
     private readonly ToggleSwitch _ignoreCertificate = new() { OnContent = "", OffContent = "" };
     private readonly ComboBox _via = new() { MinWidth = 320 };
+    private readonly ComboBox _matgateConnection = new() { MinWidth = 320 };
     private readonly TextBox _notes = new() { AcceptsReturn = true, TextWrapping = Avalonia.Media.TextWrapping.Wrap, MinHeight = 140 };
     private readonly TextBox _tags = new() { Watermark = "z. B. Kunde, Produktion" };
     private readonly Button _connect = Ui.Button("play", "Verbinden");
     private readonly MatDesktop.MatFormField _domainField;
     private readonly MatDesktop.MatFormField _userField;
     private readonly MatDesktop.MatFormField _keyField;
+    private readonly MatDesktop.MatFormField _matgateField;
     private readonly TabItem _displayTab;
     private readonly Control _keyboardRow;
     private readonly Control _certificateRow;
     private IReadOnlyList<RemoteFolder> _folders = [];
     private IReadOnlyList<StoredCredential> _credentials = [];
     private IReadOnlyList<MatgateAccount> _accounts = [];
+    private IReadOnlyList<MatgateConnectionItem> _matgateItems = [];
+    private Guid? _matgateKeep;
     private RemoteConnection? _existing;
     private Guid? _newFolder;
 
@@ -65,6 +69,7 @@ public sealed class ConnectionForm : UserControl
         AutomationProperties.SetName(_port, "Port");
         _protocol.SelectionChanged += (_, _) => ApplyProtocol();
         _credential.SelectionChanged += (_, _) => ApplyProtocol();
+        _via.SelectionChanged += (_, _) => ApplyGateway();
         _browseKey.Click += async (_, _) => await BrowseKeyAsync();
 
         var general = _layout.AddTab("Allgemein");
@@ -105,9 +110,14 @@ public sealed class ConnectionForm : UserControl
             _keyboardRow,
             _certificateRow,
         ]);
-        EditLayout.ColumnOf(gateway).Children.Add(
+        _matgateField = fields.Add(nameof(RemoteConnection.MatgateConnectionId), "Verbindung in Matgate", _matgateConnection,
+            "Matgate verbindet mit Adresse und Port seiner Verbindung (auch durch seinen Tunnel); Benutzer und Passwort kommen von hier.", gateway);
+        EditLayout.ColumnOf(gateway).Children.AddRange(
+        [
             fields.Add(nameof(RemoteConnection.MatgateAccountId), "Verbinden über", _via,
-                "Direkt von diesem Computer – oder über ein Matgate, wenn das Ziel nur von dort erreichbar ist (Matgate-Konten unter „Matgate“).", gateway));
+                "Direkt von diesem Computer – oder über ein Matgate, wenn das Ziel nur von dort erreichbar ist (Matgate-Konten unter „Matgate“).", gateway),
+            _matgateField,
+        ]);
         EditLayout.ColumnOf(notes).Children.AddRange(
         [
             fields.Add(nameof(RemoteConnection.Notes), "Notiz", _notes, tab: notes),
@@ -122,13 +132,13 @@ public sealed class ConnectionForm : UserControl
                 Leave($"„{saved.Name}“ wurde gespeichert.");
             }
         };
-        _connect.Click += (_, _) =>
+        _connect.Click += async (_, _) =>
         {
             if (TrySave() is { } saved)
             {
                 try
                 {
-                    SessionLauncher.Open(saved, Ui.WindowOf(this));
+                    await SessionLauncher.OpenAsync(saved, Ui.WindowOf(this));
                 }
                 catch (BusinessException exception)
                 {
@@ -198,6 +208,10 @@ public sealed class ConnectionForm : UserControl
         _via.SelectedIndex = connection.Via == ConnectVia.Matgate && connection.MatgateAccountId is { } account
             ? Math.Max(0, _accounts.ToList().FindIndex(item => item.Id == account) + 1)
             : 0;
+        _matgateKeep = connection.MatgateConnectionId;
+        _matgateConnection.SelectedIndex = -1;
+        _matgateItems = [];
+        ApplyGateway();
         _notes.Text = connection.Notes;
         _tags.Text = connection.Tags;
 
@@ -236,6 +250,30 @@ public sealed class ConnectionForm : UserControl
     }
 
     /// <summary>Hide what does not apply: domain and display options only where the protocol has them, the key file only for SSH.</summary>
+    // "Verbindung in Matgate": the connections of the chosen Matgate with this protocol (from the copy of its library).
+    private void ApplyGateway()
+    {
+        var viaIndex = _via.SelectedIndex;
+        var account = viaIndex > 0 && viaIndex <= _accounts.Count ? _accounts[viaIndex - 1] : null;
+        _matgateField.IsVisible = account is not null;
+        if (_matgateConnection.SelectedIndex >= 0 && _matgateConnection.SelectedIndex < _matgateItems.Count)
+        {
+            _matgateKeep = _matgateItems[_matgateConnection.SelectedIndex].Id;
+        }
+
+        var protocol = (ConnectionProtocol)Math.Max(0, _protocol.SelectedIndex);
+        var library = account is { IsSignedIn: true } ? MatgateService.Library(account.Id) : null;
+        _matgateItems = [.. (library?.Connections ?? []).Where(item => item.ProtocolKind == protocol)];
+        _matgateConnection.ItemsSource = _matgateItems.Select(item =>
+            $"{item.Name} · {item.Host}{(item.Port > 0 ? ":" + item.Port.ToString(CultureInfo.InvariantCulture) : "")}{(item.Folder.Length > 0 ? " (" + item.Folder.Replace("/", " › ") + ")" : "")}").ToList();
+        _matgateConnection.SelectedIndex = _matgateKeep is { } keep ? _matgateItems.ToList().FindIndex(item => item.Id == keep) : -1;
+        _matgateConnection.PlaceholderText = account is null ? ""
+            : !account.IsSignedIn ? "Erst bei diesem Matgate anmelden (Matgate › Anmelden)"
+            : library is null ? "Die Verbindungen dieses Matgate sind noch nicht gelesen"
+            : _matgateItems.Count == 0 ? "Keine Verbindung dieses Protokolls in Matgate"
+            : "Bitte wählen";
+    }
+
     private void ApplyProtocol()
     {
         var protocol = (ConnectionProtocol)Math.Max(0, _protocol.SelectedIndex);
@@ -246,6 +284,7 @@ public sealed class ConnectionForm : UserControl
         _keyField.IsVisible = protocol == ConnectionProtocol.Ssh;
         _displayTab.IsVisible = protocol != ConnectionProtocol.Ssh;
         _keyboardRow.IsVisible = _certificateRow.IsVisible = protocol == ConnectionProtocol.Rdp;
+        ApplyGateway();
         if (_layout.Tabs.SelectedItem is TabItem { IsVisible: false })
         {
             _layout.Tabs.SelectedIndex = 0;
@@ -286,6 +325,9 @@ public sealed class ConnectionForm : UserControl
             IgnoreCertificate = _ignoreCertificate.IsChecked == true,
             Via = viaIndex > 0 ? ConnectVia.Matgate : ConnectVia.Direct,
             MatgateAccountId = viaIndex > 0 && viaIndex <= _accounts.Count ? _accounts[viaIndex - 1].Id : null,
+            MatgateConnectionId = viaIndex > 0
+                ? (_matgateConnection.SelectedIndex >= 0 && _matgateConnection.SelectedIndex < _matgateItems.Count ? _matgateItems[_matgateConnection.SelectedIndex].Id : _matgateKeep)
+                : null,
             Notes = _notes.Text ?? "",
             Tags = _tags.Text ?? "",
         };
