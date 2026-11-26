@@ -36,6 +36,15 @@ public sealed class ConnectionForm : UserControl
     private readonly TextBox _user = new();
     private readonly TextBox _domain = new();
     private readonly TextBox _keyFile = new() { Watermark = "~/.ssh/id_ed25519" };
+    private readonly TextBox _url = new() { Watermark = "https://intranet.example.com" };
+    private readonly TextBox _rootPath = new() { Watermark = "/home/anna oder freigabe/ordner" };
+    private readonly TextBox _database = new() { Watermark = "Leer: alle, die der Benutzer sehen darf" };
+    private readonly MatDesktop.MatFormField _urlField;
+    private readonly MatDesktop.MatFormField _rootField;
+    private readonly MatDesktop.MatFormField _databaseField;
+    private readonly Control _addressRow;
+    private readonly Control _generalCertificateRow;
+    private readonly ToggleSwitch _generalCertificate = new() { OnContent = "", OffContent = "" };
     private readonly Button _browseKey = Ui.Button("folder-open", "Durchsuchen …");
     private readonly ComboBox _quality = new() { ItemsSource = Qualities, MinWidth = 320 };
     private readonly TextBox _resolution = new() { Watermark = "auto, native oder 1920x1080", Width = 260 };
@@ -85,15 +94,28 @@ public sealed class ConnectionForm : UserControl
         _keyField = fields.Add(nameof(RemoteConnection.KeyFile), "Schlüsseldatei", new DockPanel { Children = { Ui.Docked(_browseKey, Dock.Right), _keyFile } },
             "Ein privater Schlüssel statt eines Passworts (optional).", signIn);
         _keyboardRow = FormFields.Row("Tastatur", "Das Tastaturlayout, das der Server für diese Sitzung annimmt.", _keyboard);
+        AutomationProperties.SetName(_url, "Adresse der Website");
+        AutomationProperties.SetName(_rootPath, "Startordner");
+        AutomationProperties.SetName(_database, "Datenbank");
+        _urlField = fields.Add(nameof(RemoteConnection.Url), "Adresse der Website", _url, "Ohne http(s):// nimmt ThixGate https.", general);
+        _rootField = fields.Add(nameof(RemoteConnection.RootPath), "Startordner", _rootPath, "Der Ordner, in dem die Verbindung beginnt und den sie nicht verlässt (SMB: Freigabe/Ordner; leer: ganz oben).", general);
+        _databaseField = fields.Add(nameof(RemoteConnection.Database), "Datenbank", _database, tab: general);
+        _generalCertificateRow = FormFields.SwitchRow("Zertifikat nicht prüfen", "Für Server mit selbst ausgestelltem Zertifikat (SQL Server: TrustServerCertificate).", _generalCertificate);
+        _generalCertificate.IsCheckedChanged += (_, _) => _ignoreCertificate.IsChecked = _generalCertificate.IsChecked;
+        _ignoreCertificate.IsCheckedChanged += (_, _) => _generalCertificate.IsChecked = _ignoreCertificate.IsChecked;
         _certificateRow = FormFields.SwitchRow("Zertifikat nicht prüfen", "Die meisten Server haben ein selbst ausgestelltes Zertifikat.", _ignoreCertificate, isLast: true);
 
         EditLayout.ColumnOf(general).Children.AddRange(
         [
             fields.Add(nameof(RemoteConnection.Name), "Name", _name, "So erscheint die Verbindung in der Liste.", general),
             fields.Add(nameof(RemoteConnection.Protocol), "Protokoll", _protocol, tab: general),
-            FormFields.Pair(
+            _addressRow = FormFields.Pair(
                 fields.Add(nameof(RemoteConnection.Host), "Adresse", _host, "Rechnername oder IP-Adresse", general),
                 fields.Add(nameof(RemoteConnection.Port), "Port", _port, "Leer: Standard", general)),
+            _urlField,
+            _rootField,
+            _databaseField,
+            _generalCertificateRow,
             fields.Add(nameof(RemoteConnection.FolderId), "Ordner", _folder, tab: general),
             FormFields.SwitchRow("Favorit", "Favoriten lassen sich in der Liste herausfiltern.", _favorite, isLast: true),
         ]);
@@ -210,10 +232,14 @@ public sealed class ConnectionForm : UserControl
         _user.Text = connection.UserName;
         _domain.Text = connection.Domain;
         _keyFile.Text = connection.KeyFile;
+        _url.Text = connection.Url;
+        _rootPath.Text = connection.RootPath;
+        _database.Text = connection.Database;
         _quality.SelectedIndex = (int)connection.Quality;
         _resolution.Text = connection.Resolution;
         _keyboard.SelectedIndex = Math.Max(0, KeyboardLayouts.ToList().FindIndex(layout => layout.Id == connection.KeyboardLayout));
         _ignoreCertificate.IsChecked = connection.IgnoreCertificate;
+        _generalCertificate.IsChecked = connection.IgnoreCertificate;
         _via.SelectedIndex = connection.Via == ConnectVia.Matgate && connection.MatgateAccountId is { } account
             ? Math.Max(0, _accounts.ToList().FindIndex(item => item.Id == account) + 1)
             : 0;
@@ -227,7 +253,7 @@ public sealed class ConnectionForm : UserControl
 
         var (protocolName, icon) = Protocols.Of(connection.Protocol);
         _layout.SetHead(icon, _existing?.Name ?? "Neue Verbindung",
-            _existing is null ? "Remote Desktop, VNC oder SSH" : $"{protocolName} · {Protocols.Address(connection)}");
+            _existing is null ? "Remote Desktop, VNC, SSH, Dateien, Website oder Datenbank" : $"{protocolName} · {Protocols.Address(connection)}");
         _layout.Delete.IsVisible = _existing is not null;
         _layout.Save.IsEnabled = _layout.Delete.IsEnabled = !locked;
         ApplyProtocol();
@@ -282,7 +308,7 @@ public sealed class ConnectionForm : UserControl
             : library is null ? "Die Verbindungen dieses Matgate sind noch nicht gelesen"
             : _matgateItems.Count == 0 ? "Keine Verbindung dieses Protokolls in Matgate"
             : "Bitte wählen";
-        _sessionOnMatgateRow.IsVisible = account is not null && protocol != ConnectionProtocol.Ssh;
+        _sessionOnMatgateRow.IsVisible = account is not null && protocol.IsScreen();
         ApplyWatchOnly();
     }
 
@@ -304,11 +330,17 @@ public sealed class ConnectionForm : UserControl
         var protocol = (ConnectionProtocol)Math.Max(0, _protocol.SelectedIndex);
         var usesCredential = _credential.SelectedIndex > 0;
         _port.Watermark = $"Standard: {RemoteConnection.DefaultPort(protocol)}";
+        var kind = protocol.KindOf();
         _userField.IsVisible = !usesCredential;
-        _domainField.IsVisible = protocol == ConnectionProtocol.Rdp && !usesCredential;
-        _keyField.IsVisible = protocol == ConnectionProtocol.Ssh;
-        _displayTab.IsVisible = protocol != ConnectionProtocol.Ssh;
+        _domainField.IsVisible = protocol.HasDomain() && !usesCredential;
+        _keyField.IsVisible = protocol.HasKeyFile();
+        _displayTab.IsVisible = kind == ConnectionKind.Screen;
         _keyboardRow.IsVisible = _certificateRow.IsVisible = protocol == ConnectionProtocol.Rdp;
+        _addressRow.IsVisible = kind != ConnectionKind.Web;
+        _urlField.IsVisible = kind == ConnectionKind.Web;
+        _rootField.IsVisible = kind == ConnectionKind.Files;
+        _databaseField.IsVisible = kind == ConnectionKind.Database;
+        _generalCertificateRow.IsVisible = protocol.HasCertificate() && protocol != ConnectionProtocol.Rdp;
         ApplyGateway();
         if (_layout.Tabs.SelectedItem is TabItem { IsVisible: false })
         {
@@ -344,6 +376,9 @@ public sealed class ConnectionForm : UserControl
             UserName = credentialIndex > 0 ? "" : _user.Text ?? "",
             Domain = credentialIndex > 0 ? "" : _domain.Text ?? "",
             KeyFile = _keyFile.Text ?? "",
+            Url = _url.Text ?? "",
+            RootPath = _rootPath.Text ?? "",
+            Database = _database.Text ?? "",
             Quality = (SessionQuality)Math.Max(0, _quality.SelectedIndex),
             Resolution = _resolution.Text ?? "auto",
             KeyboardLayout = KeyboardLayouts[Math.Max(0, _keyboard.SelectedIndex)].Id,

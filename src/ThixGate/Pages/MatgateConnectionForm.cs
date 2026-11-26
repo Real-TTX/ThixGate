@@ -40,6 +40,13 @@ public sealed class MatgateConnectionForm : UserControl
     private readonly ComboBox _keyboard = new() { ItemsSource = KeyboardLayouts.Select(layout => layout.Name).ToList(), MinWidth = 260 };
     private readonly ToggleSwitch _ignoreCertificate = new() { OnContent = "", OffContent = "" };
     private readonly TextBox _notes = new() { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 140 };
+    private readonly TextBox _url = new() { Watermark = "https://intranet.example.com" };
+    private readonly TextBox _rootPath = new() { Watermark = "/home/anna oder freigabe/ordner" };
+    private readonly TextBox _database = new() { Watermark = "Leer: alle, die der Benutzer sehen darf" };
+    private readonly MatDesktop.MatFormField _urlField;
+    private readonly MatDesktop.MatFormField _rootField;
+    private readonly MatDesktop.MatFormField _databaseField;
+    private readonly Control _addressRow;
     private readonly Control _sharedRow;
     private readonly MatDesktop.MatFormField _domainField;
     private readonly TabItem _displayTab;
@@ -61,13 +68,19 @@ public sealed class MatgateConnectionForm : UserControl
 
         _sharedRow = FormFields.SwitchRow("Mit anderen teilen",
             "Aus: deine eigene Verbindung in Matgate. An: eine gemeinsame, die Matgates Verwalter anderen freigeben.", _shared, isLast: true);
+        _urlField = fields.Add(nameof(MatgateConnectionDraft.Url), "Adresse der Website", _url, "Ohne http(s):// nimmt Matgate https.", general);
+        _rootField = fields.Add(nameof(MatgateConnectionDraft.RootPath), "Startordner", _rootPath, "SMB: Freigabe/Ordner; leer: ganz oben.", general);
+        _databaseField = fields.Add(nameof(MatgateConnectionDraft.Database), "Datenbank", _database, tab: general);
         EditLayout.ColumnOf(general).Children.AddRange(
         [
             fields.Add(nameof(MatgateConnectionDraft.Name), "Name", _name, "So erscheint die Verbindung in Matgate und hier.", general),
             fields.Add(nameof(MatgateConnectionDraft.Protocol), "Protokoll", _protocol, tab: general),
-            FormFields.Pair(
+            _addressRow = FormFields.Pair(
                 fields.Add(nameof(MatgateConnectionDraft.Host), "Adresse", _host, "Wie Matgate das Ziel erreicht", general),
                 fields.Add(nameof(MatgateConnectionDraft.Port), "Port", _port, "Leer: Standard", general)),
+            _urlField,
+            _rootField,
+            _databaseField,
             fields.Add(nameof(MatgateConnectionDraft.Folder), "Ordner in Matgate", _folder, "Unterordner mit „/“; leer: keiner.", general),
             _sharedRow,
         ]);
@@ -148,6 +161,9 @@ public sealed class MatgateConnectionForm : UserControl
         _keyboard.SelectedIndex = KeyboardLayouts.ToList().FindIndex(layout => layout.Id == draft.KeyboardLayout);
         _ignoreCertificate.IsChecked = draft.IgnoreCertificate;
         _notes.Text = draft.Notes;
+        _url.Text = draft.Url;
+        _rootPath.Text = draft.RootPath;
+        _database.Text = draft.Database;
         _passwordNote.Text = _existing?.HasStoredLogin == true
             ? "Matgate hat ein Passwort für diese Verbindung gespeichert. Es bleibt dort – ändern nur in Matgate."
             : "ThixGate schickt Matgate nie ein Passwort. Ein gespeichertes Passwort setzt du in Matgate; sonst fragt die Sitzung danach.";
@@ -174,8 +190,13 @@ public sealed class MatgateConnectionForm : UserControl
     {
         var protocol = (ConnectionProtocol)Math.Max(0, _protocol.SelectedIndex);
         _port.Watermark = $"Standard: {RemoteConnection.DefaultPort(protocol)}";
-        _domainField.IsVisible = protocol == ConnectionProtocol.Rdp;
-        _displayTab.IsVisible = protocol == ConnectionProtocol.Rdp;
+        var kind = protocol.KindOf();
+        _domainField.IsVisible = protocol.HasDomain();
+        _displayTab.IsVisible = protocol.HasCertificate();
+        _addressRow.IsVisible = kind != ConnectionKind.Web;
+        _urlField.IsVisible = kind == ConnectionKind.Web;
+        _rootField.IsVisible = kind == ConnectionKind.Files;
+        _databaseField.IsVisible = kind == ConnectionKind.Database;
         if (_layout.Tabs.SelectedItem is TabItem { IsVisible: false })
         {
             _layout.Tabs.SelectedIndex = 0;
@@ -208,6 +229,9 @@ public sealed class MatgateConnectionForm : UserControl
             Notes = _notes.Text ?? "",
             KeyboardLayout = keyboard >= 0 && keyboard < KeyboardLayouts.Count ? KeyboardLayouts[keyboard].Id : _keptLayout,
             IgnoreCertificate = _ignoreCertificate.IsChecked == true,
+            Url = _url.Text ?? "",
+            RootPath = _rootPath.Text ?? "",
+            Database = _database.Text ?? "",
             Shared = _shared.IsChecked == true,
         };
     }

@@ -310,6 +310,23 @@ public static partial class LibraryService
         || connection.Notes.Contains(search, StringComparison.CurrentCultureIgnoreCase)
         || connection.Tags.Contains(search, StringComparison.CurrentCultureIgnoreCase);
 
+    /// <summary>A website's address as it is kept: https:// in front where no scheme was given (as Matgate does).</summary>
+    public static string WebAddress(string address)
+    {
+        var cleaned = address.Trim();
+        if (cleaned.Length == 0)
+        {
+            return "";
+        }
+
+        if (!cleaned.Contains("://", StringComparison.Ordinal))
+        {
+            cleaned = "https://" + cleaned;
+        }
+
+        return Uri.TryCreate(cleaned, UriKind.Absolute, out var uri) ? uri.ToString() : cleaned;
+    }
+
     private static RemoteConnection Normalize(RemoteConnection connection)
     {
         var tags = string.Join(", ", connection.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -324,18 +341,33 @@ public static partial class LibraryService
             Tags = tags,
             KeyFile = connection.KeyFile.Trim(),
             Resolution = connection.Resolution.Trim().ToLowerInvariant() is { Length: > 0 } resolution ? resolution : "auto",
+            Url = connection.Url.Trim(),
+            RootPath = connection.RootPath.Trim(),
+            Database = connection.Database.Trim(),
         };
 
         // Fields that do not apply to the protocol are not kept (the form hides them, the business layer clears them).
-        normalized = normalized.Protocol switch
+        var protocol = normalized.Protocol;
+        var kind = protocol.KindOf();
+        normalized = normalized with
         {
-            ConnectionProtocol.Ssh => normalized with { Domain = "", Resolution = "auto", Quality = SessionQuality.Auto },
-            ConnectionProtocol.Vnc => normalized with { Domain = "", KeyFile = "" },
-            _ => normalized with { KeyFile = "" },
+            Domain = protocol.HasDomain() ? normalized.Domain : "",
+            KeyFile = protocol.HasKeyFile() ? normalized.KeyFile : "",
+            Resolution = kind == ConnectionKind.Screen ? normalized.Resolution : "auto",
+            Quality = kind == ConnectionKind.Screen ? normalized.Quality : SessionQuality.Auto,
+            RootPath = kind == ConnectionKind.Files ? normalized.RootPath : "",
+            Database = kind == ConnectionKind.Database ? normalized.Database : "",
+            Url = kind == ConnectionKind.Web ? WebAddress(normalized.Url) : "",
         };
 
+        // A website: its address decides host and port.
+        if (kind == ConnectionKind.Web && Uri.TryCreate(normalized.Url, UriKind.Absolute, out var url))
+        {
+            normalized = normalized with { Host = url.Host, Port = url.IsDefaultPort ? 0 : url.Port };
+        }
+
         // A session on Matgate is for remote desktops über Matgate only.
-        if (normalized.Via == ConnectVia.Direct || normalized.Protocol == ConnectionProtocol.Ssh)
+        if (normalized.Via == ConnectVia.Direct || kind != ConnectionKind.Screen)
         {
             normalized = normalized with { SessionOnMatgate = false };
         }
@@ -353,6 +385,18 @@ public static partial class LibraryService
         if (connection.Name.Length == 0)
         {
             throw new BusinessException("Bitte geben Sie der Verbindung einen Namen.", nameof(RemoteConnection.Name));
+        }
+
+        if (connection.Protocol.KindOf() == ConnectionKind.Web
+            && (!Uri.TryCreate(connection.Url, UriKind.Absolute, out var url) || url.Scheme is not ("http" or "https") || url.Host.Length == 0))
+        {
+            throw new BusinessException(connection.Url.Length == 0 ? "Bitte geben Sie die Adresse der Website an." : "Die Adresse ist keine Website (https://…).", nameof(RemoteConnection.Url));
+        }
+
+        if (connection.Url.Length > 2000 || connection.RootPath.Length > 500 || connection.Database.Length > 128)
+        {
+            throw new BusinessException("Adresse, Ordner oder Datenbank sind zu lang.",
+                connection.Url.Length > 2000 ? nameof(RemoteConnection.Url) : connection.RootPath.Length > 500 ? nameof(RemoteConnection.RootPath) : nameof(RemoteConnection.Database));
         }
 
         if (connection.Name.Length > MaxNameLength)
@@ -380,7 +424,7 @@ public static partial class LibraryService
             throw new BusinessException("Benutzername und Domäne dürfen höchstens 256 Zeichen lang sein.", nameof(RemoteConnection.UserName));
         }
 
-        if (connection.Protocol == ConnectionProtocol.Ssh && connection.UserName.Any(character => char.IsWhiteSpace(character) || character is '@' or '"' or '\''))
+        if (connection.Protocol.HasKeyFile() && connection.UserName.Any(character => char.IsWhiteSpace(character) || character is '@' or '"' or '\''))
         {
             throw new BusinessException("Der Benutzername für SSH darf keine Leerzeichen, @ oder Anführungszeichen enthalten.", nameof(RemoteConnection.UserName));
         }

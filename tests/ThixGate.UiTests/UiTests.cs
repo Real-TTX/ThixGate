@@ -31,7 +31,7 @@ public static class UiTestApp
 /// The main window driven like a user would (the sections, the forms, the toolbar, connecting) and screenshots of every page in light and
 /// dark (set THIXGATE_SCREENSHOTS to a folder to keep them; docs/images has the ones of the README, from the snapshot command).
 /// </summary>
-public sealed class UiTests
+public sealed partial class UiTests
 {
     private static readonly string? ShotFolder = Environment.GetEnvironmentVariable("THIXGATE_SCREENSHOTS");
 

@@ -5,7 +5,7 @@ namespace ThixGate.Core.Business;
 
 /// <summary>
 /// The sample library of the snapshots and UI tests: folders (Büro, Kunden › Müller GmbH, Labor), saved credentials, RDP, VNC and SSH
-/// connections with favourites and "last used", a Matgate account. Only ever written into a data folder of its own (snapshot, tests).
+/// connections, a file share, a website and a database, with favourites and "last used", a Matgate account. Only ever written into a data folder of its own (snapshot, tests).
 /// </summary>
 public static class SampleData
 {
@@ -21,6 +21,9 @@ public static class SampleData
     public static readonly Guid MuellerWebId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000024");
     public static readonly Guid RaspberryId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000025");
     public static readonly Guid BuildAgentId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000026");
+    public static readonly Guid OfficeShareId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000027");
+    public static readonly Guid IntranetId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000028");
+    public static readonly Guid MuellerDatabaseId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000029");
     public static readonly Guid MatgateAccountId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000031");
     public static readonly Guid MatgateDeviceId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000032");
     public static readonly Guid MatgateErpId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000041");
@@ -106,5 +109,24 @@ public static class SampleData
             }
         });
         LibraryService.Raise(syncToo: false);
+    }
+
+    /// <summary>A file share, a website and a database besides (the snapshots; the tests count the connections of <see cref="Create"/>).</summary>
+    public static void CreateFilesWebDatabase()
+    {
+        LibraryService.SaveConnection(new RemoteConnection
+        {
+            Id = OfficeShareId, Name = "Ablage Büro", Protocol = ConnectionProtocol.Smb, Host = "fs01.buero.local", RootPath = "daten", FolderId = OfficeFolderId,
+            CredentialId = AdminCredentialId, Tags = "Büro, Dateien",
+        });
+        LibraryService.SaveConnection(new RemoteConnection
+        {
+            Id = IntranetId, Name = "Intranet", Protocol = ConnectionProtocol.Web, Url = "https://intranet.buero.local", FolderId = OfficeFolderId,
+        });
+        LibraryService.SaveConnection(new RemoteConnection
+        {
+            Id = MuellerDatabaseId, Name = "Datenbank Müller", Protocol = ConnectionProtocol.MsSql, Host = "sql.mueller-gmbh.de", Database = "erp", FolderId = MuellerFolderId,
+            UserName = "report", IgnoreCertificate = true, Tags = "Kunde",
+        });
     }
 }

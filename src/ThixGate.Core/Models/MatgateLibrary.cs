@@ -1,8 +1,8 @@
 namespace ThixGate.Core.Models;
 
 /// <summary>
-/// The library of a Matgate account as Matgate's app API gives it (<c>GET /app/api/library</c>): the RDP, VNC and SSH connections the
-/// user may work in, with their folders - never a password. Kept per computer (matgate/&lt;account&gt;.json) so the list is there offline;
+/// The library of a Matgate account as Matgate's app API gives it (<c>GET /app/api/library</c>): the connections the user may work in
+/// (RDP, VNC, SSH; files, websites and databases from Matgate 0.59), with their folders - never a password. Kept per computer (matgate/&lt;account&gt;.json) so the list is there offline;
 /// read-only here, a connection can be taken over into the own library.
 /// </summary>
 public sealed record MatgateLibrary
@@ -63,6 +63,15 @@ public sealed record MatgateConnectionDraft
 
     public bool IgnoreCertificate { get; init; } = true;
 
+    /// <summary>A website: its address.</summary>
+    public string Url { get; init; } = "";
+
+    /// <summary>Files: the folder it starts in.</summary>
+    public string RootPath { get; init; } = "";
+
+    /// <summary>Databases: the database.</summary>
+    public string Database { get; init; } = "";
+
     /// <summary>New ones: shared with others in Matgate ("Verbindungen verwalten") instead of the user's own.</summary>
     public bool Shared { get; init; }
 
@@ -78,6 +87,9 @@ public sealed record MatgateConnectionDraft
         Notes = item.Notes,
         KeyboardLayout = item.KeyboardLayout.Length > 0 ? item.KeyboardLayout : "de-de-qwertz",
         IgnoreCertificate = item.IgnoreCertificate,
+        Url = item.Url,
+        RootPath = item.RootPath,
+        Database = item.Database,
         Shared = !item.IsPrivate,
     };
 }
@@ -99,7 +111,7 @@ public sealed record MatgateConnectionItem
 
     public string Name { get; init; } = "";
 
-    /// <summary>"rdp", "vnc" or "ssh".</summary>
+    /// <summary>"rdp", "vnc", "ssh", "sftp", "ftp", "smb", "webdav", "website", "mssql", "mysql", "postgres".</summary>
     public string Protocol { get; init; } = "";
 
     public string Host { get; init; } = "";
@@ -140,11 +152,14 @@ public sealed record MatgateConnectionItem
     /// <summary>The user's own connection in Matgate.</summary>
     public bool IsPrivate { get; init; }
 
-    public ConnectionProtocol? ProtocolKind => Protocol switch
-    {
-        "rdp" => ConnectionProtocol.Rdp,
-        "vnc" => ConnectionProtocol.Vnc,
-        "ssh" => ConnectionProtocol.Ssh,
-        _ => null,
-    };
+    /// <summary>A website: its address.</summary>
+    public string Url { get; init; } = "";
+
+    /// <summary>Files: the folder it starts in.</summary>
+    public string RootPath { get; init; } = "";
+
+    /// <summary>Databases: the database.</summary>
+    public string Database { get; init; } = "";
+
+    public ConnectionProtocol? ProtocolKind => ConnectionKinds.FromMatgateName(Protocol);
 }

@@ -314,10 +314,10 @@ public static class MatgateService
     /// </summary>
     public static RemoteConnection AsConnection(Guid accountId, MatgateConnectionItem item)
     {
-        var protocol = item.ProtocolKind ?? throw new BusinessException("ThixGate öffnet nur Remote Desktop, VNC und SSH.");
-        if (item.IsWatchOnly && protocol == ConnectionProtocol.Ssh)
+        var protocol = item.ProtocolKind ?? throw new BusinessException("Diese Art von Verbindung öffnet ThixGate nicht.");
+        if (item.IsWatchOnly && !protocol.IsScreen())
         {
-            throw new BusinessException("Dieses Terminal darfst du in Matgate nur ansehen – das geht nur in Matgate selbst.");
+            throw new BusinessException("Diese Verbindung darfst du in Matgate nur ansehen – das geht nur in Matgate selbst.");
         }
 
         return new RemoteConnection
@@ -328,14 +328,17 @@ public static class MatgateService
             Host = item.Host,
             Port = item.Port == RemoteConnection.DefaultPort(protocol) ? 0 : item.Port,
             UserName = item.UserName,
-            Domain = protocol == ConnectionProtocol.Rdp ? item.Domain : "",
+            Domain = protocol.HasDomain() ? item.Domain : "",
             Notes = item.Notes,
             IgnoreCertificate = item.IgnoreCertificate,
+            Url = item.Url,
+            RootPath = item.RootPath,
+            Database = item.Database,
             KeyboardLayout = KeyboardLayoutId(item.KeyboardLayout),
             Via = ConnectVia.Matgate,
             MatgateAccountId = accountId,
             MatgateConnectionId = item.Id,
-            SessionOnMatgate = protocol != ConnectionProtocol.Ssh && (item.HasStoredLogin || item.IsWatchOnly),
+            SessionOnMatgate = protocol.IsScreen() && (item.HasStoredLogin || item.IsWatchOnly),
         };
     }
 
@@ -379,16 +382,19 @@ public static class MatgateService
         var body = new
         {
             name = checkedDraft.Name,
-            protocol = checkedDraft.Protocol.ToString().ToLowerInvariant(),
+            protocol = checkedDraft.Protocol.MatgateName(),
             host = checkedDraft.Host,
             port = checkedDraft.Port,
             userName = checkedDraft.UserName,
-            domain = checkedDraft.Protocol == ConnectionProtocol.Rdp ? checkedDraft.Domain : "",
+            domain = checkedDraft.Protocol.HasDomain() ? checkedDraft.Domain : "",
             folder = checkedDraft.Folder,
             notes = checkedDraft.Notes,
             keyboardLayout = checkedDraft.KeyboardLayout,
             ignoreCertificate = checkedDraft.IgnoreCertificate,
             shared = matgateConnectionId is null ? checkedDraft.Shared : (bool?)null,
+            url = checkedDraft.Protocol == ConnectionProtocol.Web ? checkedDraft.Url : null,
+            rootPath = checkedDraft.Protocol.KindOf() == ConnectionKind.Files ? checkedDraft.RootPath : null,
+            database = checkedDraft.Protocol.KindOf() == ConnectionKind.Database ? checkedDraft.Database : null,
         };
 
         MatgateConnectionItem saved;
@@ -444,7 +450,10 @@ public static class MatgateService
             Name = draft.Name.Trim(),
             Host = draft.Host.Trim(),
             UserName = draft.UserName.Trim(),
-            Domain = draft.Protocol == ConnectionProtocol.Rdp ? draft.Domain.Trim() : "",
+            Domain = draft.Protocol.HasDomain() ? draft.Domain.Trim() : "",
+            Url = draft.Protocol == ConnectionProtocol.Web ? LibraryService.WebAddress(draft.Url) : "",
+            RootPath = draft.Protocol.KindOf() == ConnectionKind.Files ? draft.RootPath.Trim() : "",
+            Database = draft.Protocol.KindOf() == ConnectionKind.Database ? draft.Database.Trim() : "",
             Folder = string.Join('/', draft.Folder.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)),
             Notes = draft.Notes.Trim(),
         };
@@ -461,6 +470,16 @@ public static class MatgateService
         if (cleaned.Name.Length > 200)
         {
             throw new BusinessException("Der Name ist zu lang (höchstens 200 Zeichen).", nameof(MatgateConnectionDraft.Name));
+        }
+
+        if (cleaned.Protocol == ConnectionProtocol.Web)
+        {
+            if (!Uri.TryCreate(cleaned.Url, UriKind.Absolute, out var url) || url.Scheme is not ("http" or "https"))
+            {
+                throw new BusinessException("Bitte geben Sie die Adresse der Website an (https://…).", nameof(MatgateConnectionDraft.Url));
+            }
+
+            cleaned = cleaned with { Host = url.Host, Port = 0 };
         }
 
         if (cleaned.Host.Length == 0)

@@ -1,11 +1,88 @@
 namespace ThixGate.Core.Models;
 
-/// <summary>The protocol of a connection.</summary>
+/// <summary>The protocol of a connection (stored by name; new ones are appended).</summary>
 public enum ConnectionProtocol
 {
     Rdp = 0,
     Vnc = 1,
     Ssh = 2,
+
+    // files
+    Sftp = 3,
+    Ftp = 4,
+    Smb = 5,
+    WebDav = 6,
+
+    /// <summary>A website (shown in ThixGate's browser).</summary>
+    Web = 7,
+
+    // databases
+    MsSql = 8,
+    MySql = 9,
+    Postgres = 10,
+}
+
+/// <summary>What kind of session a protocol opens.</summary>
+public enum ConnectionKind
+{
+    /// <summary>A remote desktop: RDP, VNC.</summary>
+    Screen,
+
+    /// <summary>A terminal: SSH.</summary>
+    Terminal,
+
+    /// <summary>A file manager: SFTP, FTP, SMB, WebDAV.</summary>
+    Files,
+
+    /// <summary>A browser: a website.</summary>
+    Web,
+
+    /// <summary>A database browser: SQL Server, MySQL, PostgreSQL.</summary>
+    Database,
+}
+
+public static class ConnectionKinds
+{
+    public static ConnectionKind KindOf(this ConnectionProtocol protocol) => protocol switch
+    {
+        ConnectionProtocol.Ssh => ConnectionKind.Terminal,
+        ConnectionProtocol.Sftp or ConnectionProtocol.Ftp or ConnectionProtocol.Smb or ConnectionProtocol.WebDav => ConnectionKind.Files,
+        ConnectionProtocol.Web => ConnectionKind.Web,
+        ConnectionProtocol.MsSql or ConnectionProtocol.MySql or ConnectionProtocol.Postgres => ConnectionKind.Database,
+        _ => ConnectionKind.Screen,
+    };
+
+    public static bool IsScreen(this ConnectionProtocol protocol) => protocol.KindOf() == ConnectionKind.Screen;
+
+    /// <summary>Matgate's name of the protocol in its app API ("rdp", "sftp", "website", "mssql", …).</summary>
+    public static string MatgateName(this ConnectionProtocol protocol) => protocol == ConnectionProtocol.Web ? "website" : protocol.ToString().ToLowerInvariant();
+
+    /// <summary>The protocol of Matgate's name; null: one ThixGate does not open.</summary>
+    public static ConnectionProtocol? FromMatgateName(string name) => name switch
+    {
+        "rdp" => ConnectionProtocol.Rdp,
+        "vnc" => ConnectionProtocol.Vnc,
+        "ssh" => ConnectionProtocol.Ssh,
+        "sftp" => ConnectionProtocol.Sftp,
+        "ftp" => ConnectionProtocol.Ftp,
+        "smb" => ConnectionProtocol.Smb,
+        "webdav" => ConnectionProtocol.WebDav,
+        "website" => ConnectionProtocol.Web,
+        "mssql" => ConnectionProtocol.MsSql,
+        "mysql" => ConnectionProtocol.MySql,
+        "postgres" => ConnectionProtocol.Postgres,
+        _ => null,
+    };
+
+    /// <summary>The protocols with a domain: RDP and SMB.</summary>
+    public static bool HasDomain(this ConnectionProtocol protocol) => protocol is ConnectionProtocol.Rdp or ConnectionProtocol.Smb;
+
+    /// <summary>The protocols with a key file: SSH and SFTP.</summary>
+    public static bool HasKeyFile(this ConnectionProtocol protocol) => protocol is ConnectionProtocol.Ssh or ConnectionProtocol.Sftp;
+
+    /// <summary>The protocols that check a certificate: RDP, WebDAV, a website, SQL Server.</summary>
+    public static bool HasCertificate(this ConnectionProtocol protocol) =>
+        protocol is ConnectionProtocol.Rdp or ConnectionProtocol.WebDav or ConnectionProtocol.Web or ConnectionProtocol.MsSql;
 }
 
 /// <summary>How ThixGate reaches the host of a connection.</summary>
@@ -101,8 +178,19 @@ public sealed record RemoteConnection
 
     // ---- SSH ----
 
-    /// <summary>SSH: a private key file instead of a password.</summary>
+    /// <summary>SSH, SFTP: a private key file instead of a password (the password is then its passphrase).</summary>
     public string KeyFile { get; init; } = "";
+
+    // ---- Files, websites, databases ----
+
+    /// <summary>A website: its address (https://…); Host is its host name.</summary>
+    public string Url { get; init; } = "";
+
+    /// <summary>Files: the folder the connection starts in and cannot leave ("/home/anna", SMB "share/folder"; empty: the top).</summary>
+    public string RootPath { get; init; } = "";
+
+    /// <summary>Databases: the database (empty: every one the login may see).</summary>
+    public string Database { get; init; } = "";
 
     // ---- Gateway ----
 
@@ -136,7 +224,13 @@ public sealed record RemoteConnection
     public static int DefaultPort(ConnectionProtocol protocol) => protocol switch
     {
         ConnectionProtocol.Vnc => 5900,
-        ConnectionProtocol.Ssh => 22,
+        ConnectionProtocol.Ssh or ConnectionProtocol.Sftp => 22,
+        ConnectionProtocol.Ftp => 21,
+        ConnectionProtocol.Smb => 445,
+        ConnectionProtocol.WebDav or ConnectionProtocol.Web => 443,
+        ConnectionProtocol.MsSql => 1433,
+        ConnectionProtocol.MySql => 3306,
+        ConnectionProtocol.Postgres => 5432,
         _ => 3389,
     };
 }

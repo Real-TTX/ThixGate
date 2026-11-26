@@ -190,6 +190,45 @@ internal static class SelfTest
             return "";
         });
 
+        await Check("database grid and files tab", async () =>
+        {
+            // the result grid binds by index (trimming must keep it) and the files table draws
+            var grid = Sessions.ResultGrids.For(new Matgate.Services.Database.DbResult(["id", "name"], [["1", "Anna"], ["2", null]], null, false, 0));
+            var window = new Avalonia.Controls.Window { Width = 500, Height = 300, Content = grid };
+            window.Show();
+            await Settle();
+            Ensure(grid.Columns.Count == 2 && grid.ItemsSource is System.Collections.ICollection { Count: 2 }, "the result grid has no rows");
+            window.Content = new Sessions.FilesView(new RemoteConnection { Name = "Selbsttest", Protocol = ConnectionProtocol.Sftp, Host = "probe.invalid" });
+            await Settle();
+            window.Close();
+            return "";
+        });
+
+#if WINDOWS
+        if (OperatingSystem.IsWindows())
+        {
+            await Check("website browser (WebView2)", async () =>
+            {
+                var browser = new Sessions.WebView2Browser();
+                var window = new Avalonia.Controls.Window { Width = 640, Height = 400, Content = browser };
+                window.Show();
+                await Settle();
+                try
+                {
+                    await browser.StartAsync(new Sessions.BrowserOptions(new Uri("data:text/html,<title>ThixGate</title><p>Selbsttest</p>"),
+                        Path.Combine(AppPaths.DataDirectory, "web", "self-test"), null, false, () => null, []));
+                    var loaded = await browser.FirstPage.WaitAsync(TimeSpan.FromSeconds(30));
+                    Ensure(loaded, "the page did not load");
+                    return browser.EngineVersion;
+                }
+                finally
+                {
+                    window.Close();
+                }
+            });
+        }
+#endif
+
         report.AppendLine(failures == 0 ? "PASSED" : $"FAILED ({failures})");
         await File.WriteAllTextAsync(reportPath, report.ToString(), Encoding.UTF8);
 

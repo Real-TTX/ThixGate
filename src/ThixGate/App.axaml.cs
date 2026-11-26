@@ -47,6 +47,11 @@ public partial class App : Application
         MatText.Language = "de";
         // the icon of every window (MatWindow.DefaultIcon): the main window, the dialogs, the setup
         MatTheme.Install(this, new MatThemeOptions(Accent) { Icon = Ui.AppIcon });
+        // the result grids of the database tab: Fluent's DataGrid, in MatDesktop's colours (its Fluent resources)
+        Styles.Add(new Avalonia.Markup.Xaml.Styling.StyleInclude(new Uri("avares://ThixGate/"))
+        {
+            Source = new Uri("avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"),
+        });
     }
 
     public override void OnFrameworkInitializationCompleted()

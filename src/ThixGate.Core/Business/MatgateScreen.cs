@@ -62,7 +62,7 @@ public sealed class MatgateScreen : IScreenBackend
             throw new BusinessException("Bitte unter „Gateway“ die Verbindung in Matgate wählen.");
         }
 
-        if (connection.Protocol == ConnectionProtocol.Ssh)
+        if (!connection.Protocol.IsScreen())
         {
             throw new BusinessException("Eine Sitzung auf Matgate gibt es für Remote Desktop und VNC.");
         }

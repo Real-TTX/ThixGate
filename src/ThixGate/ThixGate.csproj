@@ -72,6 +72,28 @@
     <PackageReference Include="Avalonia" Version="$(AvaloniaVersion)" />
     <PackageReference Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
+    <!-- The result grids of the database tab (Sessions/DatabaseView); the DataGrid has its own versions (11.3.13 is its newest 11.3). -->
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.13" />
+  </ItemGroup>
+
+  <!--
+    The browser of a website tab on Windows: WebView2 (Edge, on every Windows 10/11). Its .NET part speaks classic COM, which trimming
+    switches off unless asked (BuiltInComInteropSupport); the library itself is not trimmed (TrimMode partial). macOS uses WKWebView
+    through the Objective-C runtime (Sessions/WebKitHost) and needs no package.
+  -->
+  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
+    <!-- only the core and the native loader: the package's build files would add its WPF and WinForms wrappers -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4370.26" ExcludeAssets="compile;build;buildTransitive" GeneratePathProperty="true" />
+    <Reference Include="Microsoft.Web.WebView2.Core">
+      <HintPath>$(PkgMicrosoft_Web_WebView2)/lib_manual/netcoreapp3.0/Microsoft.Web.WebView2.Core.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
     <!-- The snapshot command (Snapshot.cs) draws the windows without a screen. -->
     <PackageReference Include="Avalonia.Headless" Version="$(AvaloniaVersion)" />
   </ItemGroup>

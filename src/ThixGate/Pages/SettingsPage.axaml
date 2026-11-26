@@ -33,7 +33,7 @@
           <!-- ===== Sessions ===== -->
           <TabItem x:Name="SessionsTabItem" Header="Sitzungen">
             <StackPanel>
-              <mat:MatSettingRow Title="Sitzungen öffnen" Description="Remote-Desktop-, VNC- und SSH-Sitzungen öffnen als Tab rechts vom Menü (wie in Royal TS), in einem eigenen Fenster oder gleich im Vollbild. Ein Tab lässt sich jederzeit abdocken.">
+              <mat:MatSettingRow Title="Sitzungen öffnen" Description="Sitzungen (Remote Desktop, VNC, SSH, Dateien, Websites, Datenbanken) öffnen als Tab rechts vom Menü (wie in Royal TS), in einem eigenen Fenster oder gleich im Vollbild. Ein Tab lässt sich jederzeit abdocken.">
                 <ComboBox x:Name="OpenInChoice" MinWidth="220" AutomationProperties.Name="Sitzungen öffnen">
                   <ComboBoxItem Content="Als Tab im Hauptfenster" />
                   <ComboBoxItem Content="Im eigenen Fenster" />

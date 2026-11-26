@@ -30,6 +30,9 @@ public static class AppPaths
     /// <summary>The libraries of the Matgate accounts, one file each (read-only copies, per computer).</summary>
     public static string MatgateDirectory => Path.Combine(DataDirectory, "matgate");
 
+    /// <summary>Files opened from a file connection (to view or edit them with their program); emptied when ThixGate starts.</summary>
+    public static string TemporaryDirectory => Path.Combine(Path.GetTempPath(), AppInfo.ProductName + (HasOverride ? "-" + Path.GetFileName(DataDirectory) : ""));
+
     /// <summary>The host keys of the SSH servers this computer trusts (per computer).</summary>
     public static string KnownHostsFile => Path.Combine(DataDirectory, "known_hosts.json");
 

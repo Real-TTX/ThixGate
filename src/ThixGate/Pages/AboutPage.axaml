@@ -34,7 +34,7 @@
               </Grid>
             </Border>
             <TextBlock TextWrapping="Wrap" LineHeight="21"
-                       Text="ThixGate verwaltet deine Remote-Verbindungen an einem Ort: Ordner, Verbindungen (RDP, VNC, SSH) und gespeicherte Zugangsdaten. Remote Desktop und VNC laufen mit der Engine von Matgate direkt in ThixGate, SSH im eigenen Terminal – als Tabs im Hauptfenster. Die ThixCloud gleicht die Bibliothek zwischen deinen Geräten ab (Passwörter nie), ein Matgate kann als Gateway dazukommen." />
+                       Text="ThixGate verwaltet deine Remote-Verbindungen an einem Ort: Ordner, Verbindungen (RDP, VNC, SSH) und gespeicherte Zugangsdaten. Remote Desktop und VNC laufen mit der Engine von Matgate direkt in ThixGate, SSH im eigenen Terminal, Dateien (SFTP, FTP, SMB, WebDAV), Websites und Datenbanken (SQL Server, MySQL, PostgreSQL) mit Matgates Code – alles als Tabs im Hauptfenster. Die ThixCloud gleicht die Bibliothek zwischen deinen Geräten ab (Passwörter nie), ein Matgate kann als Gateway dazukommen." />
             <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
               <TextBlock Text="Kanal" Theme="{StaticResource MatText.Muted}" Margin="0,3,24,3" />
               <TextBlock Grid.Column="1" x:Name="ChannelText" Margin="0,3" />

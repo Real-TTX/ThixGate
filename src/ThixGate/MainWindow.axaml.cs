@@ -580,6 +580,7 @@ public partial class MainWindow : MatWindow
         }
 
         SessionText.Text = open.Count == 1 ? $"{open[0].Connection.Name} · {open[0].StateText}" : $"{open.Count} Sitzungen offen";
+        SessionIcon.Icon = open.Count == 1 ? Protocols.Of(open[0].Connection.Protocol).Icon : "layers";
         ToolTip.SetTip(SessionStatus, string.Join("\n", open.Select(view => $"{view.Connection.Name} – {view.StateText}")));
     }
 

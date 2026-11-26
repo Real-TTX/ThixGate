@@ -44,6 +44,7 @@ public sealed class SessionView : UserControl, IScreenHost, ISshHost
     private WriteableBitmap? _bitmap;
     private IScreenBackend? _backend;
     private readonly TerminalView? _terminal;
+    private readonly ISessionPanel? _panel;
     private SshSession? _ssh;
     private CancellationTokenSource? _run;
     private volatile bool _dirty;
@@ -91,9 +92,26 @@ public sealed class SessionView : UserControl, IScreenHost, ISshHost
             _terminal.Buffer.TitleChanged += title => Ui.Post(() => _state.Text = title.Length > 0 ? $"{connection.Name} · {title}" : $"{connection.Name} · {Protocols.Address(connection)}");
             _surface.Child = new Panel { Children = { _terminal, _overlay } };
         }
-        else
+        else if (connection.Protocol.IsScreen())
         {
             _surface.Child = new Panel { Children = { _image, _overlay } };
+        }
+        else
+        {
+            // Files, databases, websites: a panel of their own (it handles its keys and mouse itself).
+            _panel = connection.Protocol.KindOf() switch
+            {
+                ConnectionKind.Files => new FilesView(connection),
+                ConnectionKind.Database => new DatabaseView(connection),
+                _ => new WebPanel(connection),
+            };
+            _surface.Use(Border.BackgroundProperty, "Mat.Surface");
+            if (_panel is WebPanel web)
+            {
+                web.TitleChanged += title => _state.Text = title.Length > 0 ? $"{connection.Name} · {title}" : $"{connection.Name} · {Protocols.Address(connection)}";
+            }
+
+            _surface.Child = new Panel { Children = { _panel.View, _overlay } };
         }
 
         var root = new DockPanel();
@@ -114,7 +132,7 @@ public sealed class SessionView : UserControl, IScreenHost, ISshHost
         _surface.PointerMoved += (_, e) => Pointer(e);
         _surface.PointerPressed += (_, e) =>
         {
-            if (_terminal is not null)
+            if (!IsScreen)
             {
                 return;
             }
@@ -126,7 +144,7 @@ public sealed class SessionView : UserControl, IScreenHost, ISshHost
         };
         _surface.PointerReleased += (_, e) =>
         {
-            if (_terminal is not null)
+            if (!IsScreen)
             {
                 return;
             }
@@ -137,7 +155,7 @@ public sealed class SessionView : UserControl, IScreenHost, ISshHost
         };
         _surface.PointerWheelChanged += (_, e) =>
         {
-            if (_terminal is not null)
+            if (!IsScreen)
             {
                 return;
             }
@@ -187,6 +205,12 @@ public sealed class SessionView : UserControl, IScreenHost, ISshHost
     /// <summary>The terminal of an SSH session (null for RDP / VNC).</summary>
     public TerminalView? Terminal => _terminal;
 
+    /// <summary>The file manager, database browser or browser of a session that is none of picture or terminal (tests).</summary>
+    internal ISessionPanel? Panel => _panel;
+
+    /// <summary>A remote desktop (RDP, VNC): the picture takes the mouse and every key.</summary>
+    private bool IsScreen => _terminal is null && _panel is null;
+
     /// <summary>The button "Abdocken" / "Andocken" (tests).</summary>
     public Button DockButton => _dock;
 
@@ -215,7 +239,16 @@ public sealed class SessionView : UserControl, IScreenHost, ISshHost
     public void Shutdown() => Stop(null);
 
     /// <summary>Puts the keyboard into the session.</summary>
-    public void FocusScreen() => ((Control?)_terminal ?? _surface).Focus();
+    public void FocusScreen()
+    {
+        if (_panel is not null)
+        {
+            _panel.FocusPanel();
+            return;
+        }
+
+        ((Control?)_terminal ?? _surface).Focus();
+    }
 
     // ================================================================= life cycle
 
@@ -226,7 +259,7 @@ public sealed class SessionView : UserControl, IScreenHost, ISshHost
         var token = _run.Token;
         ShowState("Verbinde …", "refresh", Tone.Accent, $"Verbinde mit {Protocols.Address(_connection)} …");
         _reconnect.IsVisible = false;
-        _ = Task.Run(() => _terminal is null ? RunAsync(token) : RunSshAsync(token), token);
+        _ = Task.Run(() => _panel is not null ? RunPanelAsync(token) : _terminal is null ? RunAsync(token) : RunSshAsync(token), token);
     }
 
     private async Task RunAsync(CancellationToken token)
@@ -350,6 +383,52 @@ public sealed class SessionView : UserControl, IScreenHost, ISshHost
                 "Neuen Schlüssel annehmen", isDestructive: true));
     }
 
+    /// <summary>Files, databases, websites: the panel connects (asking to sign in when it must) and works until the session ends.</summary>
+    private async Task RunPanelAsync(CancellationToken token)
+    {
+        var panel = _panel!;
+        try
+        {
+            await panel.ConnectAsync(AskSignInAsync, token);
+            _isConnected = true;
+            Ui.Post(() =>
+            {
+                ShowState("Verbunden", "check", Tone.Success, null);
+                panel.FocusPanel();
+            });
+            await Task.Delay(Timeout.Infinite, token);
+        }
+        catch (OperationCanceledException)
+        {
+            if (!token.IsCancellationRequested)
+            {
+                Ui.Post(() => Ended("Die Anmeldung wurde abgebrochen."));
+            }
+        }
+        catch (BusinessException exception)
+        {
+            Log.Warning($"Session {_connection.Id}: {exception.Message}");
+            Ui.Post(() => Ended(exception.Message));
+        }
+        finally
+        {
+            _isConnected = false;
+            Ui.Post(panel.Disconnect);
+        }
+    }
+
+    private async Task<LoginAnswer?> AskSignInAsync(string userName, bool failed, bool canRemember)
+    {
+        string[] need = userName.Length == 0 ? ["username", "password"] : ["password"];
+        if (_connection.Protocol.HasDomain())
+        {
+            need = [.. need, "domain"];
+        }
+
+        var answer = await Dispatcher.UIThread.InvokeAsync(() => Dialogs.SignInDialog.AskAsync(Ui.WindowOf(this), _connection.Name, need, userName, _connection.Domain, failed, canRemember));
+        return answer is null ? null : new LoginAnswer(answer.UserName.Length > 0 ? answer.UserName : userName, answer.Password, answer.Remember, answer.Domain);
+    }
+
     private void Stop(string? message)
     {
         ReleaseAll();
@@ -378,6 +457,11 @@ public sealed class SessionView : UserControl, IScreenHost, ISshHost
         if (_terminal is not null)
         {
             _terminal.Opacity = overlay is null || _ssh is not null ? 1 : 0.35;
+        }
+
+        if (_panel is not null)
+        {
+            _panel.View.Opacity = overlay is null ? 1 : 0.15;
         }
     }
 
@@ -622,9 +706,9 @@ public sealed class SessionView : UserControl, IScreenHost, ISshHost
             return;
         }
 
-        if (_terminal is not null)
+        if (!IsScreen)
         {
-            return; // the terminal reads its keys itself
+            return; // a terminal or panel reads its keys itself
         }
 
         var (scancode, extended) = KeyMap.ScancodeOf(e.PhysicalKey);

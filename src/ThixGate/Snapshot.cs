@@ -129,6 +129,7 @@ internal static class Snapshot
             LibraryStore.Reset();
             SettingsStore.Reset();
             SampleData.Create();
+            SampleData.CreateFilesWebDatabase();
             foreach (var theme in Themes)
             {
                 Application.Current.RequestedThemeVariant = theme == "dark" ? ThemeVariant.Dark : ThemeVariant.Light;

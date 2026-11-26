@@ -44,11 +44,11 @@ public sealed class ConnectionsPage : UserControl
     {
         _layout = new ListLayout<RemoteConnection>(
             "Verbindungen",
-            "Deine Remote-Verbindungen: Remote Desktop, VNC und SSH öffnen als Tab in ThixGate. Ein Doppelklick verbindet.",
+            "Deine Verbindungen: Remote Desktop, VNC, SSH, Dateien (SFTP, FTP, SMB, WebDAV), Websites und Datenbanken öffnen als Tab in ThixGate. Ein Doppelklick verbindet.",
             "Name, Adresse, Benutzer, Notiz oder Schlagwort suchen",
             "Verbindungen",
             Row);
-        _protocol = _layout.Toolbar.AddChoice("Protokoll", ["Alle Protokolle", "Remote Desktop (RDP)", "VNC", "SSH"], 190);
+        _protocol = _layout.Toolbar.AddChoice("Protokoll", ["Alle Protokolle", .. Protocols.Names], 190);
         _folder = _layout.Toolbar.AddChoice("Ordner", ["Alle Ordner"], 190);
         _sort = _layout.Toolbar.AddChoice("Sortierung", ["Nach Name", "Zuletzt verwendet", "Nach Adresse", "Nach Protokoll"], 180);
         _descending.Content = new MatIcon { Icon = "sort", Size = 16 };
