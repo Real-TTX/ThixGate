@@ -31,6 +31,7 @@ public sealed class ConnectionTree : UserControl
     private readonly TextBlock _empty = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(4, 8), IsVisible = false };
     private readonly HashSet<Guid> _expanded;
     private IReadOnlyList<LibraryTreeRow> _rows = [];
+    private string _matgateKey = "";
 
     public ConnectionTree()
     {
@@ -48,7 +49,12 @@ public sealed class ConnectionTree : UserControl
                 item.Margin = new Thickness(0, 0, 0, 1);
                 item.Padding = new Thickness(6, 0);
                 item.ContextMenu = MenuOf(data);
-                AutomationProperties.SetName(item, data.IsFolder ? $"Ordner {data.Name}, {data.Count} Verbindung(en)" : data.Name);
+                AutomationProperties.SetName(item, data switch
+                {
+                    { Matgate: not null } => $"Matgate {data.Name}, {data.Count} Verbindung(en)",
+                    { IsFolder: true } => $"Ordner {data.Name}, {data.Count} Verbindung(en)",
+                    _ => data.Name,
+                });
             }
         };
         AutomationProperties.SetName(_list, "Bibliothek");
@@ -59,23 +65,29 @@ public sealed class ConnectionTree : UserControl
                 return;
             }
 
-            // The chevron opens and closes; the rest of the row shows the folder (and opens it).
+            // The chevron opens and closes; the rest of the row of an own folder shows the folder (and opens it). A Matgate and its folders
+            // open and close with a click anywhere.
             var onChevron = e.GetPosition(content).X < (row.Depth * Indent) + 18;
-            if (onChevron || !row.IsExpanded)
+            if (onChevron || !row.IsExpanded || row.Folder is null)
             {
                 Toggle(row);
             }
 
-            if (!onChevron)
+            if (!onChevron && row.Folder is { } folder)
             {
-                FolderChosen?.Invoke(this, row.Id);
+                FolderChosen?.Invoke(this, folder.Id);
             }
         };
         _list.DoubleTapped += async (_, e) =>
         {
-            if (RowAt(e.Source) is { Connection: { } connection })
+            switch (RowAt(e.Source))
             {
-                await ConnectAsync(connection);
+                case { Connection: { } connection }:
+                    await ConnectAsync(connection);
+                    break;
+                case { MatgateItem: { } item, MatgateAccountId: { } account }:
+                    await ConnectAsync(account, item);
+                    break;
             }
         };
         // Tunnel: the list itself would take Left / Right before a bubbling handler sees them.
@@ -97,7 +109,19 @@ public sealed class ConnectionTree : UserControl
         dock.Children.Add(_list);
         Content = dock;
 
-        Ui.WhileShown(this, () => LibraryService.Changed += OnChanged, () => LibraryService.Changed -= OnChanged, Refresh);
+        Ui.WhileShown(
+            this,
+            () =>
+            {
+                LibraryService.Changed += OnChanged;
+                SettingsService.Changed += OnSettingsChanged;
+            },
+            () =>
+            {
+                LibraryService.Changed -= OnChanged;
+                SettingsService.Changed -= OnSettingsChanged;
+            },
+            Refresh);
     }
 
     /// <summary>A folder was clicked: show its connections.</summary>
@@ -200,10 +224,19 @@ public sealed class ConnectionTree : UserControl
 
     private void OnChanged(object? sender, EventArgs e) => Ui.Post(Refresh);
 
+    /// <summary>A Matgate signed in or out, renamed or its library read again: the tree follows (not for every remembered window size).</summary>
+    private void OnSettingsChanged(object? sender, AppSettings settings)
+    {
+        var key = string.Join("|", settings.MatgateAccounts.Select(account => $"{account.Id}:{account.Name}:{account.IsSignedIn}:{account.LibraryFetched:O}"));
+        if (key != _matgateKey)
+        {
+            _matgateKey = key;
+            Ui.Post(Refresh);
+        }
+    }
+
     private void RememberExpanded()
     {
-        var known = LibraryService.Folders().Select(folder => folder.Id).ToHashSet();
-        _expanded.RemoveWhere(id => !known.Contains(id));
         SettingsService.Remember(current => current with { ExpandedFolders = [.. _expanded] });
     }
 
@@ -258,7 +291,11 @@ public sealed class ConnectionTree : UserControl
                 e.Handled = true;
                 await ConnectAsync(connection);
                 break;
-            case Key.F2 when !AccessPolicy.IsConfigurationLocked:
+            case Key.Enter when row is { MatgateItem: { } item, MatgateAccountId: { } account }:
+                e.Handled = true;
+                await ConnectAsync(account, item);
+                break;
+            case Key.F2 when !AccessPolicy.IsConfigurationLocked && (!row.IsFromMatgate || row.Matgate is not null || row.MatgateItem is { CanEdit: true }):
                 e.Handled = true;
                 Edit(row);
                 break;
@@ -267,13 +304,21 @@ public sealed class ConnectionTree : UserControl
 
     private void Edit(LibraryTreeRow row)
     {
-        if (row.Folder is { } folder)
+        var main = Ui.MainOf(this);
+        switch (row)
         {
-            Ui.MainOf(this)?.ShowFolderForm(folder.Id);
-        }
-        else
-        {
-            Ui.MainOf(this)?.ShowConnectionForm(row.Id);
+            case { Folder: { } folder }:
+                main?.ShowFolderForm(folder.Id);
+                break;
+            case { Connection: { } connection }:
+                main?.ShowConnectionForm(connection.Id);
+                break;
+            case { Matgate: { } account }:
+                main?.ShowMatgateForm(account.Id);
+                break;
+            case { MatgateItem: { } item, MatgateAccountId: { } accountId }:
+                main?.ShowMatgateConnectionForm(accountId, item.Id);
+                break;
         }
     }
 
@@ -290,7 +335,32 @@ public sealed class ConnectionTree : UserControl
         }
     }
 
-    /// <summary>What the right mouse button offers for a folder or a connection.</summary>
+    /// <summary>A connection of a Matgate, straight from its library (the own one taken over from it, if there is one).</summary>
+    private async Task ConnectAsync(Guid accountId, MatgateConnectionItem item)
+    {
+        try
+        {
+            await SessionLauncher.OpenAsync(MatgateService.TakenOver(accountId, item.Id) ?? MatgateService.AsConnection(accountId, item), Ui.WindowOf(this));
+        }
+        catch (BusinessException exception)
+        {
+            Show(exception.Message, InfoSeverity.Error);
+        }
+    }
+
+    private async Task RefreshMatgateAsync(Guid accountId)
+    {
+        try
+        {
+            await MatgateService.RefreshLibraryAsync(accountId);
+        }
+        catch (BusinessException exception)
+        {
+            Show(exception.Message, InfoSeverity.Error);
+        }
+    }
+
+    /// <summary>What the right mouse button offers for a folder or a connection, of the own library or of a Matgate.</summary>
     private ContextMenu MenuOf(LibraryTreeRow row)
     {
         var locked = AccessPolicy.IsConfigurationLocked;
@@ -320,6 +390,35 @@ public sealed class ConnectionTree : UserControl
                 items.Add(new Separator());
                 items.Add(Item("trash", "Löschen …", async () => await ConnectionForm.DeleteAsync(this, connection, Show)));
             }
+        }
+
+        else if (row.Matgate is { } account)
+        {
+            items.Add(Item("refresh", "Aktualisieren", async () => await RefreshMatgateAsync(account.Id)));
+            if (MatgateService.Library(account.Id)?.User is { CanCreate: true })
+            {
+                items.Add(Item("plus", "Neu in Matgate …", () => main()?.ShowMatgateConnectionForm(account.Id, null)));
+            }
+
+            items.Add(new Separator());
+            items.Add(Item("server", "Matgate öffnen", () => main()?.ShowMatgateForm(account.Id)));
+        }
+        else if (row is { MatgateItem: { } item, MatgateAccountId: { } accountId })
+        {
+            items.Add(Item(item.IsWatchOnly ? "eye" : "play", item.IsWatchOnly ? "Ansehen" : "Verbinden", async () => await ConnectAsync(accountId, item)));
+            if (item.CanEdit)
+            {
+                items.Add(Item("edit", "In Matgate bearbeiten …", () => main()?.ShowMatgateConnectionForm(accountId, item.Id)));
+            }
+
+            if (!locked && !item.IsWatchOnly && MatgateService.TakenOver(accountId, item.Id) is null)
+            {
+                items.Add(Item("download", "In die eigene Bibliothek übernehmen", () => Run(() => MatgateService.TakeOver(accountId, item.Id))));
+            }
+        }
+        else if (row.MatgateAccountId is { } folderAccount)
+        {
+            items.Add(Item("refresh", "Aktualisieren", async () => await RefreshMatgateAsync(folderAccount)));
         }
 
         return new ContextMenu { ItemsSource = items };
@@ -364,7 +463,14 @@ public sealed class ConnectionTree : UserControl
             grid.Children.Add(Ui.Cell(new Border { Width = 18 }, 0, 1));
         }
 
-        var icon = row.Folder is not null ? (row.IsExpanded ? "folder-open" : "folder") : Protocols.Of(row.Connection!.Protocol).Icon;
+        var icon = row switch
+        {
+            { Matgate: not null } => "server",
+            { IsFolder: true } => row.IsExpanded ? "folder-open" : "folder",
+            { Connection: { } own } => Protocols.Of(own.Protocol).Icon,
+            { MatgateItem.ProtocolKind: { } protocol } => Protocols.Of(protocol).Icon,
+            _ => "monitor",
+        };
         grid.Children.Add(Ui.Cell(new MatIcon { Icon = icon, Size = 16, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center }, 0, 2));
         grid.Children.Add(Ui.Cell(new TextBlock { Text = row.Name, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center }, 0, 3));
 
@@ -380,9 +486,29 @@ public sealed class ConnectionTree : UserControl
             grid.Children.Add(Ui.Cell(new MatIcon { Icon = "star", Size = 12, IsFilled = true, Margin = new Thickness(8, 0, 2, 0), VerticalAlignment = VerticalAlignment.Center }, 0, 4));
         }
 
+        else if (row.MatgateItem is { IsWatchOnly: true })
+        {
+            grid.Children.Add(Ui.Cell(new MatIcon { Icon = "eye", Size = 14, Margin = new Thickness(8, 0, 2, 0), VerticalAlignment = VerticalAlignment.Center }, 0, 4));
+        }
+
         if (row.Connection is { } connection)
         {
             ToolTip.SetTip(grid, string.Join("\n", new[] { Protocols.Address(connection), connection.Notes }.Where(text => text.Length > 0)));
+        }
+        else if (row.MatgateItem is { } item)
+        {
+            var address = item.Port > 0 ? $"{item.Host}:{item.Port}" : item.Host;
+            var how = item switch
+            {
+                { IsWatchOnly: true } => "Nur ansehen – als Sitzung auf Matgate",
+                { HasStoredLogin: true } => "Matgate meldet sich an – als Sitzung auf Matgate",
+                _ => "Über Matgate",
+            };
+            ToolTip.SetTip(grid, string.Join("\n", new[] { address, how, item.Notes }.Where(text => text.Length > 0)));
+        }
+        else if (row.Matgate is { } account)
+        {
+            ToolTip.SetTip(grid, $"{account.ServerUrl}\nangemeldet als {(account.DisplayName.Length > 0 ? account.DisplayName : account.UserName)}");
         }
 
         return grid;

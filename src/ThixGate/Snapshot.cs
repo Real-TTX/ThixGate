@@ -5,6 +5,7 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using MatDesktop;
 using ThixGate.Core.Business;
+using ThixGate.Core.Models;
 using ThixGate.Core.Infrastructure;
 using ThixGate.Pages;
 
@@ -202,11 +203,11 @@ internal static class Snapshot
 
     private static void RenderMainWindow(string folder, string theme, SnapshotReport report)
     {
-        // The tree of the menu the same in light and dark: Büro and Kunden › Müller GmbH open.
+        // The tree of the menu the same in light and dark: Kunden › Müller GmbH open, and the Matgate with its Rechenzentrum.
         var settings = SettingsService.Remember(current => current with
         {
             TreeWidth = 270,
-            ExpandedFolders = [SampleData.OfficeFolderId, SampleData.CustomersFolderId, SampleData.MuellerFolderId],
+            ExpandedFolders = [SampleData.CustomersFolderId, SampleData.MuellerFolderId, SampleData.MatgateAccountId, LibraryTreeRow.MatgateFolderId(SampleData.MatgateAccountId, "Rechenzentrum")],
         });
         var window = new MainWindow();
         window.ShowFromTray();

@@ -394,7 +394,7 @@ public sealed class UiTests
         Assert.True(window.Menu.ConnectionsItem.IsCurrent);
         Assert.Equal(["Zugangsdaten", "Matgate"], window.Menu.Items.Select(item => item.Label));
         string[] Names() => [.. tree.Rows.Select(row => row.Name)];
-        Assert.Equal(["Büro", "Kunden", "Labor"], Names());
+        Assert.Equal(["Büro", "Kunden", "Labor", "Matgate Büro"], Names());
 
         // The keys of a tree: Right opens, Down goes on, Enter on a folder closes it again, Left goes up to the folder.
         tree.List.SelectedIndex = 0;
@@ -402,7 +402,7 @@ public sealed class UiTests
         (tree.List.ContainerFromIndex(0) as ListBoxItem)!.Focus();
         window.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.None);
         Settle(window);
-        Assert.Equal(["Büro", "Dateiserver", "Terminalserver", "Kunden", "Labor"], Names());
+        Assert.Equal(["Büro", "Dateiserver", "Terminalserver", "Kunden", "Labor", "Matgate Büro"], Names());
         Assert.Equal([SampleData.OfficeFolderId], SettingsService.Get().ExpandedFolders);
         tree.List.SelectedIndex = 2;
         Settle(window);
@@ -412,7 +412,7 @@ public sealed class UiTests
         Assert.Equal("Büro", tree.Selected!.Name);
         window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
         Settle(window);
-        Assert.Equal(["Büro", "Kunden", "Labor"], Names());
+        Assert.Equal(["Büro", "Kunden", "Labor", "Matgate Büro"], Names());
 
         // A click on a folder opens it and shows its connections; "Alle Verbindungen" shows all again.
         var labor = (ListBoxItem)tree.List.ContainerFromIndex(2)!;
@@ -420,7 +420,7 @@ public sealed class UiTests
         window.MouseDown(point, MouseButton.Left);
         window.MouseUp(point, MouseButton.Left);
         Settle(window);
-        Assert.Equal(["Büro", "Kunden", "Labor", "Build-Agent", "Raspberry Pi Werkstatt"], Names());
+        Assert.Equal(["Büro", "Kunden", "Labor", "Build-Agent", "Raspberry Pi Werkstatt", "Matgate Büro"], Names());
         Assert.Same(window.ConnectionsPage, window.CurrentPage);
         Assert.Equal(2, window.ConnectionsPage.List.ItemCount);
         Assert.Equal("Labor", tree.Selected!.Name);
@@ -454,6 +454,50 @@ public sealed class UiTests
         Assert.Same(window.ConnectionForm, window.CurrentPage);
         Assert.Equal("Kunden › Müller GmbH", window.ConnectionForm.FolderChoice.SelectedItem);
         Save(window, "tree-light");
+
+        // The Matgate in the tree: a click opens it and its folders; its connections open straight from there (nothing taken over), what may
+        // only be watched says so, what Matgate allows to change is changed in Matgate.
+        window.ShowConnections();
+        Settle(window);
+        void Click(Guid id)
+        {
+            var container = (ListBoxItem)tree.List.ContainerFromIndex(tree.Rows.ToList().FindIndex(row => row.Id == id))!;
+            var at = container.TranslatePoint(new Point(container.Bounds.Width / 2, container.Bounds.Height / 2), window)!.Value;
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left);
+            Settle(window);
+        }
+
+        Click(SampleData.MatgateAccountId);
+        Click(LibraryTreeRow.MatgateFolderId(SampleData.MatgateAccountId, "Rechenzentrum"));
+        Assert.Equal(["Matgate Büro", "Kunden", "Rechenzentrum", "Git", "Leitstand", "SQL-Server"], Names().SkipWhile(name => name != "Matgate Büro"));
+        var opened = new List<RemoteConnection>();
+        SessionLauncher.OpenForTests = opened.Add;
+        try
+        {
+            tree.List.SelectedIndex = tree.Rows.ToList().FindIndex(row => row.Id == SampleData.MatgateSqlId);
+            Settle(window);
+            (tree.List.ContainerFromIndex(tree.List.SelectedIndex) as ListBoxItem)!.Focus();
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Settle(window);
+        }
+        finally
+        {
+            SessionLauncher.OpenForTests = null;
+        }
+
+        var sql = Assert.Single(opened);
+        Assert.Equal((ConnectVia.Matgate, SampleData.MatgateSqlId, "sql01.rz.local"), (sql.Via, sql.MatgateConnectionId, sql.Host));
+        Assert.Null(MatgateService.TakenOver(SampleData.MatgateAccountId, SampleData.MatgateSqlId));
+        string[] Menu(Guid id) => [.. ((ListBoxItem)tree.List.ContainerFromIndex(tree.Rows.ToList().FindIndex(row => row.Id == id))!)
+            .ContextMenu!.ItemsSource!.OfType<MenuItem>().Select(item => (string)item.Header!)];
+        Assert.Equal(["Verbinden", "In Matgate bearbeiten …", "In die eigene Bibliothek übernehmen"], Menu(SampleData.MatgateSqlId));
+        Assert.Equal(["Ansehen"], Menu(SampleData.MatgateWatchId));
+        Assert.Equal(["Aktualisieren", "Neu in Matgate …", "Matgate öffnen"], Menu(SampleData.MatgateAccountId));
+        window.KeyPressQwerty(PhysicalKey.F2, RawInputModifiers.None);
+        Settle(window);
+        Assert.Same(window.MatgateConnectionForm, window.CurrentPage);
+        Save(window, "tree-matgate-light");
 
         // Beside the wider menu the buttons below the list keep one line: only their icons.
         window.ShowConnections();

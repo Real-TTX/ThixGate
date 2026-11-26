@@ -201,8 +201,24 @@ public sealed class LibraryTests : IDisposable
 
         static string Line(LibraryTreeRow row) => $"{new string(' ', row.Depth * 2)}{(row.IsFolder ? (row.IsExpanded ? "- " : "+ ") : "")}{row.Name}{(row.IsFolder ? $" ({row.Count})" : "")}";
 
-        // Closed: the folders at the top, then the connections without a folder.
-        Assert.Equal(["+ Büro (2)", "+ Kunden (2)", "+ Labor (2)", "Zuhause NAS"], LibraryService.Tree("", new HashSet<Guid>()).Select(Line));
+        // Closed: the folders at the top, then the connections without a folder, then the signed-in Matgate.
+        Assert.Equal(["+ Büro (2)", "+ Kunden (2)", "+ Labor (2)", "Zuhause NAS", "+ Matgate Büro (4)"], LibraryService.Tree("", new HashSet<Guid>()).Select(Line));
+
+        // The Matgate open: its folders (from its folders and the paths of its connections) and connections, straight from its library.
+        var rz = LibraryTreeRow.MatgateFolderId(SampleData.MatgateAccountId, "Rechenzentrum");
+        var matgate = LibraryService.Tree("", new HashSet<Guid> { SampleData.MatgateAccountId, rz }).SkipWhile(row => row.Matgate is null).ToList();
+        Assert.Equal(["- Matgate Büro (4)", "  + Kunden (1)", "  - Rechenzentrum (3)", "    Git", "    Leitstand", "    SQL-Server"], matgate.Select(Line));
+        Assert.All(matgate, row => Assert.True(row.IsFromMatgate));
+        Assert.Equal(SampleData.MatgateSqlId, matgate[^1].MatgateItem!.Id);
+        Assert.Equal(rz, matgate[2].Id);
+
+        // A search finds them too; signed out (or Matgate off by policy) the Matgate is not in the tree.
+        Assert.Equal(["- Matgate Büro (1)", "  - Rechenzentrum (1)", "    Leitstand"], LibraryService.Tree("leitstand", new HashSet<Guid>()).Select(Line));
+        AccessPolicy.UsePolicyReaderForTests(name => name == "DisableMatgate");
+        Assert.DoesNotContain(LibraryService.Tree("", new HashSet<Guid>()), row => row.IsFromMatgate);
+        AccessPolicy.UsePolicyReaderForTests(_ => false);
+        SettingsService.UpdateMatgateAccounts(list => [.. list.Select(account => account with { DeviceId = null })]);
+        Assert.DoesNotContain(LibraryService.Tree("", new HashSet<Guid>()), row => row.IsFromMatgate);
 
         // Open folders show their sub-folders first, then their connections, each by name; a closed one inside an open one stays closed.
         var open = new HashSet<Guid> { SampleData.OfficeFolderId, SampleData.CustomersFolderId };

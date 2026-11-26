@@ -224,16 +224,32 @@ public sealed record PagedList<T>(IReadOnlyList<T> Items, int Total, int Page, i
     public int PageCount => Math.Max(1, (Total + PageSize - 1) / PageSize);
 }
 
-/// <summary>One row of the tree column (<see cref="Business.LibraryService.Tree"/>): a folder or a connection, indented by its depth.</summary>
+/// <summary>
+/// One row of the tree of the menu (<see cref="Business.LibraryService.Tree"/>), indented by its depth: a folder or a connection of the own
+/// library, or - from a signed-in Matgate, straight from its library copy, nothing taken over - the Matgate itself, one of its folders or one
+/// of its connections.
+/// </summary>
 public sealed record LibraryTreeRow
 {
     public RemoteFolder? Folder { get; init; }
 
     public RemoteConnection? Connection { get; init; }
 
+    /// <summary>The node of a Matgate account (its folders and connections below it).</summary>
+    public MatgateAccount? Matgate { get; init; }
+
+    /// <summary>A folder or connection of a Matgate: the account it comes from.</summary>
+    public Guid? MatgateAccountId { get; init; }
+
+    /// <summary>A folder of a Matgate: its path ("Labor/Linux").</summary>
+    public string MatgatePath { get; init; } = "";
+
+    /// <summary>A connection of a Matgate.</summary>
+    public MatgateConnectionItem? MatgateItem { get; init; }
+
     public int Depth { get; init; }
 
-    /// <summary>A folder: the connections in it and below it.</summary>
+    /// <summary>A folder (or Matgate): the connections in it and below it.</summary>
     public int Count { get; init; }
 
     /// <summary>A folder with sub-folders or connections (it has a chevron).</summary>
@@ -241,9 +257,20 @@ public sealed record LibraryTreeRow
 
     public bool IsExpanded { get; init; }
 
-    public Guid Id => Folder?.Id ?? Connection!.Id;
+    public Guid Id => Folder?.Id ?? Connection?.Id ?? Matgate?.Id ?? MatgateItem?.Id ?? MatgateFolderId(MatgateAccountId ?? Guid.Empty, MatgatePath);
 
-    public string Name => Folder?.Name ?? Connection!.Name;
+    public string Name => Folder?.Name ?? Connection?.Name ?? Matgate?.Name ?? MatgateItem?.Name ?? MatgatePath.Split('/')[^1];
 
-    public bool IsFolder => Folder is not null;
+    /// <summary>Something with rows below it: a folder, a Matgate, a folder of a Matgate.</summary>
+    public bool IsFolder => Folder is not null || Matgate is not null || MatgatePath.Length > 0;
+
+    /// <summary>A Matgate, or a folder or connection of one.</summary>
+    public bool IsFromMatgate => Matgate is not null || MatgateAccountId is not null;
+
+    /// <summary>The fixed id of a Matgate folder in the tree (its open state is remembered by it).</summary>
+    public static Guid MatgateFolderId(Guid accountId, string path)
+    {
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{accountId:N}/{path.ToLowerInvariant()}"));
+        return new Guid(hash.AsSpan(0, 16));
+    }
 }

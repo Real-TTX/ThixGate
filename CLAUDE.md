@@ -61,7 +61,8 @@ src/ThixGate.Core       (no UI) models, business layer (static classes), infrast
                         (+ MatgateConnectionDraft),
                         InstallerConfig, BusinessException
   Business/             LibraryService (folders + connections: checks, normalising per protocol, search/filter/sort/pages, tombstones,
-                        Changed; Tree: the rows of the tree column), CredentialService (the vault: passwords via TokenStore, never synced), SessionTargets (connection →
+                        Changed; Tree: the rows of the tree of the menu - own folders and connections, then every signed-in
+                        Matgate with the folders and connections of its library copy, nothing taken over), CredentialService (the vault: passwords via TokenStore, never synced), SessionTargets (connection →
                         Mat.Remote ScreenTarget; BackendAsync: engine or MatgateScreen), SshLauncher (system terminal, no password on a command line), TransferService
                         (*.thixgate.json without passwords, *.rdp), MatgateService (accounts, /health, browser sign-in to /app/authorize,
                         library copy, take-over, writing back /app/api/connections), MatgateRelay (127.0.0.1 port → WebSocket

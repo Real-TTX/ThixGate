@@ -105,7 +105,18 @@ public partial class MainWindow : MatWindow
         _folderForm.Closed = message => Back(message, (text, severity) => _folders.Value.ShowMessage(text, severity));
         _credentialForm.Closed = message => Back(message, (text, severity) => _credentials.Value.ShowMessage(text, severity));
         _matgateForm.Closed = message => Back(message, (text, severity) => _matgate.Value.ShowMessage(text, severity));
-        _matgateConnectionForm.Closed = message => Back(message, _matgateForm.ShowLibraryMessage);
+        _matgateConnectionForm.Closed = message => Back(message, (text, severity) =>
+        {
+            // Opened from the Matgate form or from the tree of the menu: the message goes where it came back to.
+            if (PageHost.Content == _matgateForm)
+            {
+                _matgateForm.ShowLibraryMessage(text, severity);
+            }
+            else if (PageHost.Content == _connections)
+            {
+                _connections.ShowMessage(text, severity);
+            }
+        });
 
         SessionStatus.Click += (_, _) => SessionWindow.OpenSessions.FirstOrDefault()?.Activate();
         _sessionTimer.Tick += (_, _) => RefreshSessions();
