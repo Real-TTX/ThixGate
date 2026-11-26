@@ -24,6 +24,9 @@
                   <ComboBoxItem Content="Dunkel" />
                 </ComboBox>
               </mat:MatSettingRow>
+              <mat:MatSettingRow Title="Bibliothek neben dem Menü" x:Name="TreeRow">
+                <ToggleSwitch x:Name="TreeSwitch" OnContent="" OffContent="" AutomationProperties.Name="Bibliothek neben dem Menü" />
+              </mat:MatSettingRow>
               <mat:MatSettingRow Title="Bei der Anmeldung starten" Description="ThixGate startet unsichtbar im Infobereich / in der Menüleiste – die letzten Verbindungen sind dort mit einem Klick erreichbar." BorderThickness="0">
                 <ToggleSwitch x:Name="AutostartSwitch" OnContent="" OffContent="" AutomationProperties.Name="Bei der Anmeldung starten" />
               </mat:MatSettingRow>

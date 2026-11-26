@@ -20,8 +20,8 @@ namespace ThixGate;
 /// <summary>
 /// The main window: Verbindungen, Ordner, Zugangsdaten, Matgate, Einstellungen and About in one window (DESK-03/04). Forms open on top of a
 /// section and "Zurück" (or Esc) returns to where they were opened. Closing the window only hides it: ThixGate keeps running in the
-/// tray / menu bar (sessions stay open). Keys: Ctrl/Cmd+1…4 the sections, +, the settings, +B fold the menu, +N a new connection,
-/// +F the search, Esc back.
+/// tray / menu bar (sessions stay open). Beside the menu the library as a tree (<see cref="ConnectionTree"/>), on every page. Keys: Ctrl/Cmd+1…4
+/// the sections, +, the settings, +B fold the menu, +L show or hide the tree, +N a new connection, +F the search, Esc back.
 /// </summary>
 public partial class MainWindow : MatWindow
 {
@@ -82,6 +82,9 @@ public partial class MainWindow : MatWindow
             ApplySidebar();
         };
         AddToMenuFoot();
+        Tree.HideRequested += (_, _) => ToggleTree();
+        TreeSplitter.DragCompleted += (_, _) => SettingsService.Remember(current => current with { TreeWidth = BodyGrid.ColumnDefinitions[1].ActualWidth });
+        ApplyTree();
         PageHost.Content = _connections;
 
         _sizeTimer.Tick += (_, _) =>
@@ -111,7 +114,11 @@ public partial class MainWindow : MatWindow
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         UpdateCoordinator.Checked += (_, _) => Ui.Post(ApplySidebar);
         CloudSyncService.StatusChanged += (_, _) => Ui.Post(RefreshCloudStatus);
-        SettingsService.Changed += (_, _) => Ui.Post(RefreshCloudStatus);
+        SettingsService.Changed += (_, _) => Ui.Post(() =>
+        {
+            RefreshCloudStatus();
+            ApplyTree();
+        });
         ApplySidebar();
     }
 
@@ -154,6 +161,14 @@ public partial class MainWindow : MatWindow
     private Ellipse CloudDot { get; set; } = null!;
 
     public void ToggleSidebar() => Sidebar.IsFolded = !Sidebar.IsFolded;
+
+    /// <summary>The tree column of the library.</summary>
+    public ConnectionTree LibraryTree => Tree;
+
+    public bool IsTreeShown => Tree.IsVisible;
+
+    /// <summary>Shows or hides the tree column (remembered for the next start).</summary>
+    public void ToggleTree() => SettingsService.Remember(current => current with { IsTreeHidden = !current.IsTreeHidden });
 
     /// <summary>Tray, second start, Dock: show the window in front.</summary>
     public void ShowFromTray()
@@ -204,11 +219,15 @@ public partial class MainWindow : MatWindow
     {
         _connectionForm.Load(connectionId, folderId);
         Push(_connectionForm);
+        if (connectionId is { } id)
+        {
+            Tree.Reveal(id);
+        }
     }
 
-    public void ShowFolderForm(Guid? folderId)
+    public void ShowFolderForm(Guid? folderId, Guid? parentId = null)
     {
-        _folderForm.Load(folderId);
+        _folderForm.Load(folderId, parentId);
         Push(_folderForm);
     }
 
@@ -312,6 +331,10 @@ public partial class MainWindow : MatWindow
                 e.Handled = true;
                 ToggleSidebar();
                 break;
+            case Key.L when withCommand:
+                e.Handled = true;
+                ToggleTree();
+                break;
             case Key.N when withCommand && !AccessPolicy.IsConfigurationLocked:
                 e.Handled = true;
                 ShowConnectionForm(null);
@@ -383,6 +406,19 @@ public partial class MainWindow : MatWindow
         }.Themed("MatButton.Ghost");
         CloudStatus.Click += (_, _) => ShowSettings(SettingsPage.CloudTab);
         Sidebar.Foot = new StackPanel { Spacing = 10, Margin = new Thickness(0, 12, 0, 10), Children = { CloudStatus } };
+    }
+
+    /// <summary>The tree column as the settings say: its width, or hidden (width 0, no splitter).</summary>
+    private void ApplyTree()
+    {
+        var settings = SettingsService.Get();
+        var shown = !settings.IsTreeHidden;
+        var column = BodyGrid.ColumnDefinitions[1];
+        column.MinWidth = shown ? SettingsService.TreeMinWidth : 0;
+        column.MaxWidth = shown ? SettingsService.TreeMaxWidth : 0;
+        column.Width = new GridLength(shown ? settings.TreeWidth : 0);
+        Tree.IsVisible = shown;
+        TreeSplitter.IsVisible = shown;
     }
 
     private void ApplySidebar()

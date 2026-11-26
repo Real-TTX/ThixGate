@@ -54,6 +54,15 @@ public sealed record AppSettings
     /// <summary>The menu at the left of the main window is folded to its icons.</summary>
     public bool IsSidebarCollapsed { get; init; }
 
+    /// <summary>The tree column of the library (folders and connections beside the menu) is hidden.</summary>
+    public bool IsTreeHidden { get; init; }
+
+    /// <summary>Width of the tree column (device-independent pixels).</summary>
+    public double TreeWidth { get; init; } = 270;
+
+    /// <summary>The folders open in the tree column.</summary>
+    public IReadOnlyList<Guid> ExpandedFolders { get; init; } = [];
+
     public bool FirstStartDone { get; init; }
 
     public CloudSettings Cloud { get; init; } = new();

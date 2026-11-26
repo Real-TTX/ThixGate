@@ -50,6 +50,14 @@ public partial class SettingsPage : UserControl
         });
         ThemeChoice.SelectionChanged += (_, _) => Apply(() => SettingsService.Update(settings => settings with { Theme = (ThemeChoice)Math.Max(0, ThemeChoice.SelectedIndex) }));
         OpenInChoice.SelectionChanged += (_, _) => Apply(() => SettingsService.Update(settings => settings with { OpenSessionIn = (OpenSessionIn)Math.Max(0, OpenInChoice.SelectedIndex) }));
+        TreeRow.Description = $"Ordner und Verbindungen als Baum in einer eigenen Spalte, auf jeder Seite in Sicht. Ein- und ausblenden auch mit {Ui.CommandKey.Name}+L.";
+        TreeSwitch.IsCheckedChanged += (_, _) =>
+        {
+            if (TreeSwitch.IsChecked is { } shown && shown == SettingsService.Get().IsTreeHidden)
+            {
+                SettingsService.Remember(settings => settings with { IsTreeHidden = !shown });
+            }
+        };
         ConfirmCloseSwitch.IsCheckedChanged += (_, _) => Apply(() => SettingsService.Update(settings => settings with { ConfirmCloseSession = ConfirmCloseSwitch.IsChecked == true }));
         SshTerminalBox.LostFocus += (_, _) => Apply(() => SettingsService.Update(settings => settings with { SshTerminal = (SshTerminalBox.Text ?? "").Trim() }));
         CheckUpdatesSwitch.IsCheckedChanged += (_, _) => Apply(() => SettingsService.Update(settings => settings with { CheckForUpdates = CheckUpdatesSwitch.IsChecked == true }));
@@ -114,6 +122,7 @@ public partial class SettingsPage : UserControl
             ThemeChoice.SelectedIndex = (int)settings.Theme;
             OpenInChoice.SelectedIndex = (int)settings.OpenSessionIn;
             ConfirmCloseSwitch.IsChecked = settings.ConfirmCloseSession;
+            TreeSwitch.IsChecked = !settings.IsTreeHidden;
             SshTerminalBox.Text = settings.SshTerminal;
             CheckUpdatesSwitch.IsChecked = settings.CheckForUpdates;
             AutoInstallSwitch.IsChecked = settings.InstallUpdatesAutomatically;

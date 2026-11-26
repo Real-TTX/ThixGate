@@ -223,3 +223,27 @@ public sealed record PagedList<T>(IReadOnlyList<T> Items, int Total, int Page, i
 {
     public int PageCount => Math.Max(1, (Total + PageSize - 1) / PageSize);
 }
+
+/// <summary>One row of the tree column (<see cref="Business.LibraryService.Tree"/>): a folder or a connection, indented by its depth.</summary>
+public sealed record LibraryTreeRow
+{
+    public RemoteFolder? Folder { get; init; }
+
+    public RemoteConnection? Connection { get; init; }
+
+    public int Depth { get; init; }
+
+    /// <summary>A folder: the connections in it and below it.</summary>
+    public int Count { get; init; }
+
+    /// <summary>A folder with sub-folders or connections (it has a chevron).</summary>
+    public bool HasChildren { get; init; }
+
+    public bool IsExpanded { get; init; }
+
+    public Guid Id => Folder?.Id ?? Connection!.Id;
+
+    public string Name => Folder?.Name ?? Connection!.Name;
+
+    public bool IsFolder => Folder is not null;
+}

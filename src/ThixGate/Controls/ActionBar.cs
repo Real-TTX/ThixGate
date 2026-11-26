@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 
 namespace ThixGate.Controls;
@@ -6,7 +7,8 @@ namespace ThixGate.Controls;
 /// <summary>
 /// The row of buttons below a list or form: left-aligned, in one line, from positive to negative.
 /// A button with <c>controls:ActionBar.Separated="True"</c> (delete) gets a clear gap before it.
-/// In a narrow window the buttons continue on the next line (order unchanged).
+/// When the buttons do not fit in one line, every button after the first shows only its icon (its text becomes its tool tip and its name);
+/// when even that does not fit, the buttons continue on the next line (order unchanged).
 /// </summary>
 public sealed class ActionBar : Panel
 {
@@ -39,11 +41,36 @@ public sealed class ActionBar : Panel
 
     public static void SetSeparated(Control element, bool value) => element.SetValue(SeparatedProperty, value);
 
+    private readonly Dictionary<Control, double> _fullWidths = [];
+    private bool _compact;
+
+    /// <summary>The buttons show only their icons (they did not fit in one line with their texts).</summary>
+    public bool IsCompact => _compact;
+
     protected override Size MeasureOverride(Size availableSize)
     {
-        foreach (var child in VisibleChildren())
+        MeasureChildren();
+
+        // The width of the line with every text (remembered from when the texts showed): compact only when that does not fit.
+        var children = VisibleChildren().ToList();
+        var full = 0d;
+        for (var index = 0; index < children.Count; index++)
         {
-            child.Measure(Size.Infinity);
+            var child = children[index];
+            var childWidth = _fullWidths.TryGetValue(child, out var known) ? known : child.DesiredSize.Width;
+            full += childWidth + (index == 0 ? 0 : GetSeparated(child) ? Separation : Spacing);
+        }
+
+        var compact = !double.IsInfinity(availableSize.Width) && full > availableSize.Width;
+        if (compact != _compact)
+        {
+            _compact = compact;
+            foreach (var child in children.Skip(1))
+            {
+                SetCompact(child, compact);
+            }
+
+            MeasureChildren();
         }
 
         var lines = Layout(availableSize.Width);
@@ -66,6 +93,46 @@ public sealed class ActionBar : Panel
 
         return finalSize;
     }
+
+    private void MeasureChildren()
+    {
+        foreach (var child in VisibleChildren())
+        {
+            child.Measure(Size.Infinity);
+            if (child is not Button { Content: IconLabel { IsTextVisible: false } })
+            {
+                _fullWidths[child] = child.DesiredSize.Width;
+            }
+        }
+    }
+
+    private static void SetCompact(Control child, bool compact)
+    {
+        if (child is not Button { Content: IconLabel { Text.Length: > 0 } label } button)
+        {
+            return;
+        }
+
+        label.IsTextVisible = !compact;
+        if (compact && ToolTip.GetTip(button) is null)
+        {
+            ToolTip.SetTip(button, label.Text);
+            button.SetValue(CompactTipProperty, true);
+        }
+        else if (!compact && button.GetValue(CompactTipProperty))
+        {
+            ToolTip.SetTip(button, null);
+            button.SetValue(CompactTipProperty, false);
+        }
+
+        if (compact && string.IsNullOrEmpty(AutomationProperties.GetName(button)))
+        {
+            AutomationProperties.SetName(button, label.Text);
+        }
+    }
+
+    private static readonly AttachedProperty<bool> CompactTipProperty =
+        AvaloniaProperty.RegisterAttached<ActionBar, Control, bool>("CompactTip");
 
     private List<Line> Layout(double availableWidth)
     {

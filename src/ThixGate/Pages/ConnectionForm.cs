@@ -175,6 +175,8 @@ public sealed class ConnectionForm : UserControl
 
     public ComboBox ProtocolChoice => _protocol;
 
+    public ComboBox FolderChoice => _folder;
+
     public TabItem DisplayTab => _displayTab;
 
     public MatDesktop.MatFormField DomainField => _domainField;

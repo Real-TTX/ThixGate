@@ -170,7 +170,8 @@ public sealed class FolderForm : UserControl
 
     public TextBox NameBox => _name;
 
-    public void Load(Guid? folderId)
+    /// <summary>A folder (null: a new one, inside <paramref name="parentId"/> when given).</summary>
+    public void Load(Guid? folderId, Guid? parentId = null)
     {
         _layout.Reset();
         _existing = folderId is { } id ? LibraryService.FindFolder(id) : null;
@@ -179,7 +180,7 @@ public sealed class FolderForm : UserControl
         _parents = [.. all.Where(folder => !excluded.Contains(folder.Id)).OrderBy(folder => LibraryService.FolderPath(folder.Id), StringComparer.CurrentCultureIgnoreCase)];
         _parent.ItemsSource = new[] { "Oben (kein Ordner)" }.Concat(_parents.Select(folder => LibraryService.FolderPath(folder.Id))).ToList();
         _name.Text = _existing?.Name ?? "";
-        _parent.SelectedIndex = _existing?.ParentId is { } parent ? _parents.ToList().FindIndex(folder => folder.Id == parent) + 1 : 0;
+        _parent.SelectedIndex = (_existing is null ? parentId : _existing.ParentId) is { } parent ? _parents.ToList().FindIndex(folder => folder.Id == parent) + 1 : 0;
         _layout.SetHead("folder", _existing?.Name ?? "Neuer Ordner",
             _existing is null ? "Ein Ordner der Bibliothek" : $"{LibraryService.CountIn(_existing.Id)} Verbindung(en) · {LibraryService.FolderPath(_existing.Id)}");
         _layout.Delete.IsVisible = _existing is not null;

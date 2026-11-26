@@ -5,6 +5,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using MatDesktop;
 using ThixGate.Core.Business;
 using ThixGate.Core.Infrastructure;
@@ -379,6 +380,90 @@ public sealed class UiTests
     {
         using var codec = SkiaSharp.SKCodec.Create(Path.Combine(folder, name));
         return (codec.Info.Width, codec.Info.Height);
+    }
+
+    [AvaloniaFact]
+    public void The_library_tree_beside_the_menu_opens_folders_searches_follows_the_forms_and_hides()
+    {
+        using var data = new TestData();
+        SampleData.Create();
+        var window = Open(1280, 820);
+        var tree = window.LibraryTree;
+        Assert.True(window.IsTreeShown);
+        string[] Names() => [.. tree.Rows.Select(row => row.Name)];
+        Assert.Equal(["Büro", "Kunden", "Labor"], Names());
+
+        // The keys of a tree: Right opens, Down goes on, Enter on a folder closes it again, Left goes up to the folder.
+        tree.List.SelectedIndex = 0;
+        Settle(window);
+        (tree.List.ContainerFromIndex(0) as ListBoxItem)!.Focus();
+        window.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.None);
+        Settle(window);
+        Assert.Equal(["Büro", "Dateiserver", "Terminalserver", "Kunden", "Labor"], Names());
+        Assert.Equal([SampleData.OfficeFolderId], SettingsService.Get().ExpandedFolders);
+        tree.List.SelectedIndex = 2;
+        Settle(window);
+        (tree.List.ContainerFromIndex(2) as ListBoxItem)!.Focus();
+        window.KeyPressQwerty(PhysicalKey.ArrowLeft, RawInputModifiers.None);
+        Settle(window);
+        Assert.Equal("Büro", tree.Selected!.Name);
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Settle(window);
+        Assert.Equal(["Büro", "Kunden", "Labor"], Names());
+
+        // A click on a folder opens it.
+        var labor = (ListBoxItem)tree.List.ContainerFromIndex(2)!;
+        var point = labor.TranslatePoint(new Point(40, labor.Bounds.Height / 2), window)!.Value;
+        window.MouseDown(point, MouseButton.Left);
+        window.MouseUp(point, MouseButton.Left);
+        Settle(window);
+        Assert.Equal(["Büro", "Kunden", "Labor", "Build-Agent", "Raspberry Pi Werkstatt"], Names());
+
+        // A connection: what the right mouse button offers.
+        tree.Reveal(SampleData.RaspberryId);
+        Settle(window);
+        var raspberry = (ListBoxItem)tree.List.ContainerFromIndex(tree.Rows.ToList().FindIndex(row => row.Id == SampleData.RaspberryId))!;
+        Assert.Equal(["Verbinden", "Bearbeiten", "Duplizieren", "Zu den Favoriten", "Löschen …"],
+            raspberry.ContextMenu!.ItemsSource!.OfType<MenuItem>().Select(item => (string)item.Header!));
+
+        // The search opens the way to what matches.
+        tree.SearchBox.Text = "webserver";
+        Settle(window);
+        Assert.Equal(["Kunden", "Müller GmbH", "Webserver Müller"], Names());
+        tree.SearchBox.Text = "";
+
+        // A form of a connection opens its folders in the tree and chooses it; "Neue Verbindung" of the tree goes into the chosen folder.
+        window.ShowConnectionForm(SampleData.MuellerErpId);
+        Settle(window);
+        Assert.Equal(SampleData.MuellerErpId, tree.Selected!.Id);
+        Assert.Contains(SampleData.MuellerFolderId, SettingsService.Get().ExpandedFolders);
+        tree.NewConnectionButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Settle(window);
+        Assert.Same(window.ConnectionForm, window.CurrentPage);
+        Assert.Equal("Kunden › Müller GmbH", window.ConnectionForm.FolderChoice.SelectedItem);
+        Save(window, "tree-light");
+
+        // Beside the tree the buttons below the list keep one line: only their icons.
+        window.ShowConnections();
+        Settle(window);
+        var actions = window.ConnectionsPage.GetVisualDescendants().OfType<ThixGate.Controls.ActionBar>().First();
+        Assert.True(actions.IsCompact);
+
+        // Ctrl/Cmd+L hides the tree (remembered), and shows it again; "Bibliothek ausblenden" in its head too.
+        window.KeyPressQwerty(PhysicalKey.L, CommandModifier);
+        Settle(window);
+        Assert.False(window.IsTreeShown);
+        Assert.True(SettingsService.Get().IsTreeHidden);
+        window.Width = 1700;
+        Settle(window);
+        Assert.False(actions.IsCompact); // wide enough: the texts again
+        window.KeyPressQwerty(PhysicalKey.L, CommandModifier);
+        Settle(window);
+        Assert.True(window.IsTreeShown);
+        tree.HideButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Settle(window);
+        Assert.False(window.IsTreeShown);
+        window.Close();
     }
 
     private static RawInputModifiers CommandModifier => OperatingSystem.IsMacOS() ? RawInputModifiers.Meta : RawInputModifiers.Control;

@@ -192,4 +192,40 @@ public sealed class LibraryTests : IDisposable
     [InlineData("fe80::1", "fe80::1", 0)]
     public void Addresses_of_rdp_files_are_split(string address, string host, int port) =>
         Assert.Equal((host, port), TransferService.SplitAddress(address));
+
+    [Fact]
+    public void The_tree_shows_folders_open_and_closed_and_a_search_opens_the_way_to_what_matches()
+    {
+        SampleData.Create();
+        LibraryService.SaveConnection(new RemoteConnection { Name = "Zuhause NAS", Protocol = ConnectionProtocol.Ssh, Host = "nas.home" });
+
+        static string Line(LibraryTreeRow row) => $"{new string(' ', row.Depth * 2)}{(row.IsFolder ? (row.IsExpanded ? "- " : "+ ") : "")}{row.Name}{(row.IsFolder ? $" ({row.Count})" : "")}";
+
+        // Closed: the folders at the top, then the connections without a folder.
+        Assert.Equal(["+ Büro (2)", "+ Kunden (2)", "+ Labor (2)", "Zuhause NAS"], LibraryService.Tree("", new HashSet<Guid>()).Select(Line));
+
+        // Open folders show their sub-folders first, then their connections, each by name; a closed one inside an open one stays closed.
+        var open = new HashSet<Guid> { SampleData.OfficeFolderId, SampleData.CustomersFolderId };
+        Assert.Equal(
+            ["- Büro (2)", "  Dateiserver", "  Terminalserver", "- Kunden (2)", "  + Müller GmbH (2)", "+ Labor (2)", "Zuhause NAS"],
+            LibraryService.Tree("", open).Select(Line));
+
+        // A search keeps only what matches and opens the folders above it, whatever is open.
+        Assert.Equal(["- Kunden (1)", "  - Müller GmbH (1)", "    ERP Müller"], LibraryService.Tree("erp", new HashSet<Guid>()).Select(Line));
+        Assert.Empty(LibraryService.Tree("gibt es nicht", open));
+
+        Assert.Equal([SampleData.CustomersFolderId, SampleData.MuellerFolderId], LibraryService.FolderChain(SampleData.MuellerFolderId));
+        Assert.Empty(LibraryService.FolderChain(null));
+    }
+
+    [Fact]
+    public void The_tree_column_is_remembered_within_its_limits()
+    {
+        SettingsService.Remember(settings => settings with { IsTreeHidden = true, TreeWidth = 5000, ExpandedFolders = [SampleData.LabFolderId, SampleData.LabFolderId] });
+        SettingsStore.Reset();
+        var read = SettingsService.Get();
+        Assert.True(read.IsTreeHidden);
+        Assert.Equal(SettingsService.TreeMaxWidth, read.TreeWidth);
+        Assert.Equal([SampleData.LabFolderId], read.ExpandedFolders);
+    }
 }
