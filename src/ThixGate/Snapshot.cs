@@ -202,10 +202,9 @@ internal static class Snapshot
 
     private static void RenderMainWindow(string folder, string theme, SnapshotReport report)
     {
-        // The tree column the same in light and dark: Büro and Kunden › Müller GmbH open.
+        // The tree of the menu the same in light and dark: Büro and Kunden › Müller GmbH open.
         var settings = SettingsService.Remember(current => current with
         {
-            IsTreeHidden = false,
             TreeWidth = 270,
             ExpandedFolders = [SampleData.OfficeFolderId, SampleData.CustomersFolderId, SampleData.MuellerFolderId],
         });

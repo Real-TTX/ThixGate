@@ -76,16 +76,17 @@ src/ThixGate.Core       (no UI) models, business layer (static classes), infrast
   Platform/             WindowActivation, Windows/ShellLink, Windows/EnvironmentChange
 src/ThixGate            (Avalonia app)
   App / Program         start-up, setup mode, single instance, tray, cloud sync; the end closes the sessions
-  MainWindow            MatTitleBar (open sessions in the middle), MatNav: Verbindungen, Ordner, Zugangsdaten, Matgate | Einstellungen;
-                        foot: cloud state, version = About; beside it the tree column (ConnectionTree, width at a splitter, hidden with +L,
-                        remembered). Forms on top with a back stack (Zurück/Esc). Ctrl/Cmd+1…4, +, , +N, +F, +B, +L
+  MainWindow            MatTitleBar (open sessions in the middle), the menu LibraryNav (in place of MatNav): the library as a tree with
+                        Alle Verbindungen (a folder shows its connections), below Zugangsdaten, Matgate | Einstellungen; foot: cloud state,
+                        version = About; width at a splitter (remembered), folded a rail. Forms on top with a back stack (Zurück/Esc).
+                        Ctrl/Cmd+1…4 (2: the folder page), +, , +N, +F, +B
   Pages/                ConnectionsPage + ConnectionForm (Allgemein | Anmeldung | Anzeige | Gateway | Notizen), FolderPages (list + form),
                         CredentialPages (list + form with Verwendung), MatgatePages (list + form: Allgemein | Verbindungen),
                         MatgateConnectionForm (a connection IN Matgate: create/change/delete as Matgate allows), SettingsPage (Allgemein | Sitzungen |
                         ThixCloud | Updates | Erweitert), AboutPage
   Sessions/             SessionWindow (IScreenHost of Mat.Remote: draws the engine's picture into a WriteableBitmap on demand, pointer,
                         keys, sign-in dialog), KeyMap (PhysicalKey → scancode for RDP, keysym for VNC), SessionLauncher, NullScreenHost
-  Controls/             ONE code base per control: ConnectionTree (the library as folders and connections, LibraryService.Tree),
+  Controls/             ONE code base per control: LibraryNav (the menu) + ConnectionTree (the library as folders and connections, LibraryService.Tree),
                         ListLayout<T> (THE list page), EditLayout (THE create/update page), ListToolbar,
                         Pager, ActionBar, FormFields, FormErrors, InfoBar, IconLabel, StatePill/EmptyState, DataTable, Formats, Protocols
   Dialogs/ Setup/ Tray/ ConfirmDialog, SignInDialog, ProblemReportDialog; ThixGateSetup (Windows); TrayIcon (favourites + recent to connect)
@@ -111,7 +112,7 @@ tests/ThixGate.UiTests  the UI headless, the end-to-end sessions (opt-in)
   (search, filter, sort); pager below the list; actions below, left-aligned, positive to negative, delete with a gap; buttons in one row
   (Speichern, …, Zurück … Löschen); icons where they help; reusable controls in Controls/ (several on one page work: no static state);
   hide what does not apply (domain only for RDP, key file only for SSH, display tab not for SSH); tabs for areas of one item; cards keep
-  their distance; About from the version bottom left; the library as a tree beside the menu on every page; an ActionBar that does not fit shows
+  their distance; About from the version bottom left; the menu IS the library as a tree (LibraryNav; MatNav is not used); an ActionBar that does not fit shows
   the icons of its buttons (after the first) before it wraps. Colours only from MatDesktop's theme; ThixGate's accent is `#4B3FCF`.
 - **Platforms:** one code base; differences behind `OperatingSystem.IsWindows()/IsMacOS()`. macOS cannot be checked from Windows: CI
   builds and tests it.

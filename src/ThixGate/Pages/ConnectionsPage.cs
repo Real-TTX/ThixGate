@@ -117,6 +117,17 @@ public sealed class ConnectionsPage : UserControl
         Refresh();
     }
 
+    /// <summary>Every connection again ("Alle Verbindungen" of the menu): no folder in the filter.</summary>
+    public void ShowAll()
+    {
+        if (_folder.SelectedIndex > 0)
+        {
+            _folder.SelectedIndex = 0;
+            _page = 0;
+            Refresh();
+        }
+    }
+
     /// <summary>The folder chosen in the toolbar (a new connection goes there).</summary>
     private Guid? FolderFilter => _folder.SelectedIndex > 0 && _folder.SelectedIndex <= _folders.Count ? _folders[_folder.SelectedIndex - 1].Id : null;
 

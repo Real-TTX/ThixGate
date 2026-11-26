@@ -16,7 +16,7 @@ verbunden wird über Matgate.
 
 | | |
 |---|---|
-| **Bibliothek** | Ordner (auch ineinander), Verbindungen mit Protokoll, Adresse, Port, Benutzer, Notiz, Schlagwörtern und Favoriten. Als **Baum neben dem Menü** auf jeder Seite in Sicht: Ordner auf- und zuklappen, durchsuchen, Doppelklick verbindet, rechte Maustaste für alles Weitere (ein- und ausblenden mit Strg/⌘+L). Dazu die Liste mit Suche, Filter (Protokoll, Ordner, Favoriten), Sortierung und Seiten. |
+| **Bibliothek** | Ordner (auch ineinander), Verbindungen mit Protokoll, Adresse, Port, Benutzer, Notiz, Schlagwörtern und Favoriten. Das **Menü ist die Bibliothek als Baum**: Ordner auf- und zuklappen (ein Klick zeigt ihre Verbindungen), durchsuchen, Doppelklick verbindet, rechte Maustaste für alles Weitere; darunter Zugangsdaten, Matgate und Einstellungen. Dazu die Liste mit Suche, Filter (Protokoll, Ordner, Favoriten), Sortierung und Seiten. |
 | **Remote Desktop & VNC** | Eigenes Sitzungsfenster mit Matgates Engine (`Mat.Remote`): Bild direkt gezeichnet, Maus, Rad, Tastatur (Scancodes für RDP, Keysyms für VNC), Auflösung folgt dem Fenster, Vollbild, Strg+Alt+Entf, Anmeldung mit NLA. Bildqualität wie in Matgate. |
 | **SSH** | Öffnet Windows Terminal bzw. Terminal.app (oder ein eigenes Terminal) mit Benutzer, Port und Schlüsseldatei – das Passwort steht nie auf einer Befehlszeile. |
 | **Zugangsdaten** | Einmal speichern, in vielen Verbindungen verwenden. Passwörter geschützt auf dem Gerät (Windows DPAPI, macOS Schlüsselbund). |

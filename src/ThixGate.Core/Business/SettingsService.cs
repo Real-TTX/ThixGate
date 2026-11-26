@@ -12,7 +12,7 @@ public static class SettingsService
     /// <summary>Raised after every saved change (any thread).</summary>
     public static event EventHandler<AppSettings>? Changed;
 
-    /// <summary>The narrowest and the widest the tree column may be.</summary>
+    /// <summary>The narrowest and the widest the open menu (the tree of the library) may be.</summary>
     public const double TreeMinWidth = 200;
 
     public const double TreeMaxWidth = 560;
@@ -42,7 +42,6 @@ public static class SettingsService
             WindowWidth = Math.Clamp(next.WindowWidth, 720, 4000),
             WindowHeight = Math.Clamp(next.WindowHeight, 480, 3000),
             IsSidebarCollapsed = next.IsSidebarCollapsed,
-            IsTreeHidden = next.IsTreeHidden,
             TreeWidth = Math.Clamp(next.TreeWidth, TreeMinWidth, TreeMaxWidth),
             ExpandedFolders = [.. next.ExpandedFolders.Distinct().Take(2000)],
             FirstStartDone = next.FirstStartDone,

@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using ThixGate.Controls;
 using MatDesktop;
 using ThixGate.Core.Business;
 using ThixGate.Core.Infrastructure;
@@ -383,13 +384,15 @@ public sealed class UiTests
     }
 
     [AvaloniaFact]
-    public void The_library_tree_beside_the_menu_opens_folders_searches_follows_the_forms_and_hides()
+    public void The_menu_is_the_library_as_a_tree_with_folders_search_forms_and_the_rail()
     {
         using var data = new TestData();
         SampleData.Create();
         var window = Open(1280, 820);
         var tree = window.LibraryTree;
-        Assert.True(window.IsTreeShown);
+        Assert.True(tree.IsVisible);
+        Assert.True(window.Menu.ConnectionsItem.IsCurrent);
+        Assert.Equal(["Zugangsdaten", "Matgate"], window.Menu.Items.Select(item => item.Label));
         string[] Names() => [.. tree.Rows.Select(row => row.Name)];
         Assert.Equal(["Büro", "Kunden", "Labor"], Names());
 
@@ -411,13 +414,22 @@ public sealed class UiTests
         Settle(window);
         Assert.Equal(["Büro", "Kunden", "Labor"], Names());
 
-        // A click on a folder opens it.
+        // A click on a folder opens it and shows its connections; "Alle Verbindungen" shows all again.
         var labor = (ListBoxItem)tree.List.ContainerFromIndex(2)!;
         var point = labor.TranslatePoint(new Point(40, labor.Bounds.Height / 2), window)!.Value;
         window.MouseDown(point, MouseButton.Left);
         window.MouseUp(point, MouseButton.Left);
         Settle(window);
         Assert.Equal(["Büro", "Kunden", "Labor", "Build-Agent", "Raspberry Pi Werkstatt"], Names());
+        Assert.Same(window.ConnectionsPage, window.CurrentPage);
+        Assert.Equal(2, window.ConnectionsPage.List.ItemCount);
+        Assert.Equal("Labor", tree.Selected!.Name);
+        Assert.False(window.Menu.ConnectionsItem.IsCurrent);
+        window.Menu.ConnectionsItem.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Settle(window);
+        Assert.Equal(6, window.ConnectionsPage.List.ItemCount);
+        Assert.Null(tree.Selected);
+        Assert.True(window.Menu.ConnectionsItem.IsCurrent);
 
         // A connection: what the right mouse button offers.
         tree.Reveal(SampleData.RaspberryId);
@@ -443,26 +455,27 @@ public sealed class UiTests
         Assert.Equal("Kunden › Müller GmbH", window.ConnectionForm.FolderChoice.SelectedItem);
         Save(window, "tree-light");
 
-        // Beside the tree the buttons below the list keep one line: only their icons.
+        // Beside the wider menu the buttons below the list keep one line: only their icons.
         window.ShowConnections();
         Settle(window);
-        var actions = window.ConnectionsPage.GetVisualDescendants().OfType<ThixGate.Controls.ActionBar>().First();
+        var actions = window.ConnectionsPage.GetVisualDescendants().OfType<ActionBar>().First();
         Assert.True(actions.IsCompact);
 
-        // Ctrl/Cmd+L hides the tree (remembered), and shows it again; "Bibliothek ausblenden" in its head too.
-        window.KeyPressQwerty(PhysicalKey.L, CommandModifier);
-        Settle(window);
-        Assert.False(window.IsTreeShown);
-        Assert.True(SettingsService.Get().IsTreeHidden);
         window.Width = 1700;
         Settle(window);
         Assert.False(actions.IsCompact); // wide enough: the texts again
-        window.KeyPressQwerty(PhysicalKey.L, CommandModifier);
+
+        // Folded (Ctrl/Cmd+B) the menu is a rail of icons: "Alle Verbindungen", the sections, Einstellungen; the tree waits.
+        window.KeyPressQwerty(PhysicalKey.B, CommandModifier);
         Settle(window);
-        Assert.True(window.IsTreeShown);
-        tree.HideButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.True(window.IsSidebarCollapsed);
+        Assert.False(tree.IsVisible);
+        Assert.True(window.Menu.ConnectionsItem.IsVisible && window.Menu.ConnectionsItem.IsFolded);
+        Assert.Equal(LibraryNav.RailWidth, window.Menu.Bounds.Width);
+        window.KeyPressQwerty(PhysicalKey.B, CommandModifier);
         Settle(window);
-        Assert.False(window.IsTreeShown);
+        Assert.True(tree.IsVisible);
+        Assert.Equal(SettingsService.Get().TreeWidth, window.Menu.Bounds.Width);
         window.Close();
     }
 

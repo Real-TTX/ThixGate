@@ -14,11 +14,11 @@ using ThixGate.Sessions;
 namespace ThixGate.Controls;
 
 /// <summary>
-/// The tree column beside the menu: the library as folders (open and closed like in Explorer, the number of connections beside a folder)
-/// with their connections, the ones without a folder below them. Always in sight, whatever page is open. A click opens or closes a folder,
-/// a double click (or Enter) connects; the right mouse button has what the item can do. Search above, "Neue Verbindung" and "Neuer Ordner"
-/// in its head (in the chosen folder). The open folders and the width are remembered (<see cref="SettingsService.Remember"/>).
-/// Several trees may exist (no static state).
+/// The library as a tree, the upper part of ThixGate's menu (<see cref="LibraryNav"/>): folders (open and closed like in Explorer, the number of
+/// connections beside a folder) with their connections, the ones without a folder below them. A click on a folder shows its connections
+/// (<see cref="FolderChosen"/>) and opens it, the chevron opens and closes it; a double click (or Enter) connects; the right mouse button has what
+/// the item can do. Search above, "Neue Verbindung" and "Neuer Ordner" in its head (in the chosen folder), <see cref="Above"/> between the
+/// search and the tree. The open folders are remembered (<see cref="SettingsService.Remember"/>). Several trees may exist (no static state).
 /// </summary>
 public sealed class ConnectionTree : UserControl
 {
@@ -28,7 +28,6 @@ public sealed class ConnectionTree : UserControl
     private readonly ListBox _list = new() { SelectionMode = SelectionMode.Single };
     private readonly Button _newConnection = IconButton("plus", "Neue Verbindung");
     private readonly Button _newFolder = IconButton("folder", "Neuer Ordner");
-    private readonly Button _hide = IconButton("sidebar", "Bibliothek ausblenden");
     private readonly TextBlock _empty = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(4, 8), IsVisible = false };
     private readonly HashSet<Guid> _expanded;
     private IReadOnlyList<LibraryTreeRow> _rows = [];
@@ -55,9 +54,21 @@ public sealed class ConnectionTree : UserControl
         AutomationProperties.SetName(_list, "Bibliothek");
         _list.Tapped += (_, e) =>
         {
-            if (RowAt(e.Source) is { IsFolder: true } row)
+            if (RowAt(e.Source) is not { IsFolder: true } row || _list.ContainerFromIndex(IndexOf(row.Id)) is not ListBoxItem { Content: Control content })
+            {
+                return;
+            }
+
+            // The chevron opens and closes; the rest of the row shows the folder (and opens it).
+            var onChevron = e.GetPosition(content).X < (row.Depth * Indent) + 18;
+            if (onChevron || !row.IsExpanded)
             {
                 Toggle(row);
+            }
+
+            if (!onChevron)
+            {
+                FolderChosen?.Invoke(this, row.Id);
             }
         };
         _list.DoubleTapped += async (_, e) =>
@@ -72,29 +83,28 @@ public sealed class ConnectionTree : UserControl
         _search.TextChanged += (_, _) => Refresh();
         _newConnection.Click += (_, _) => Ui.MainOf(this)?.ShowConnectionForm(null, SelectedFolder);
         _newFolder.Click += (_, _) => Ui.MainOf(this)?.ShowFolderForm(null, SelectedFolder);
-        _hide.Click += (_, _) => HideRequested?.Invoke(this, EventArgs.Empty);
 
         var title = Ui.Text("Bibliothek", "MatText.SectionTitle");
         title.VerticalAlignment = VerticalAlignment.Center;
-        var head = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto"), Margin = new Thickness(0, 0, 0, 10) };
+        var head = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), Margin = new Thickness(8, 0, 0, 10) };
         head.Children.Add(title);
         head.Children.Add(Ui.Cell(_newConnection, 0, 1));
         head.Children.Add(Ui.Cell(_newFolder, 0, 2));
-        head.Children.Add(Ui.Cell(_hide, 0, 3));
 
-        var top = new StackPanel { Children = { head, _search, _empty }, Margin = new Thickness(0, 0, 0, 8) };
-        var dock = new DockPanel { Margin = new Thickness(12, 16, 8, 12) };
+        var top = new StackPanel { Children = { head, _search, Above, _empty }, Margin = new Thickness(0, 0, 0, 6) };
+        var dock = new DockPanel();
         dock.Children.Add(Ui.Docked(top, Dock.Top));
         dock.Children.Add(_list);
-        Content = new Border { Child = dock, BorderThickness = new Thickness(0, 0, 1, 0) }
-            .Use(Border.BackgroundProperty, "Mat.NavBg")
-            .Use(Border.BorderBrushProperty, "Mat.Border");
+        Content = dock;
 
         Ui.WhileShown(this, () => LibraryService.Changed += OnChanged, () => LibraryService.Changed -= OnChanged, Refresh);
     }
 
-    /// <summary>"Bibliothek ausblenden" in the head: the main window hides the column (and remembers it).</summary>
-    public event EventHandler? HideRequested;
+    /// <summary>A folder was clicked: show its connections.</summary>
+    public event EventHandler<Guid>? FolderChosen;
+
+    /// <summary>What stands between the search and the tree ("Alle Verbindungen" of the menu).</summary>
+    public ContentControl Above { get; } = new() { Margin = new Thickness(0, 10, 0, 4), HorizontalContentAlignment = HorizontalAlignment.Stretch };
 
     public TextBox SearchBox => _search;
 
@@ -103,8 +113,6 @@ public sealed class ConnectionTree : UserControl
     public Button NewConnectionButton => _newConnection;
 
     public Button NewFolderButton => _newFolder;
-
-    public Button HideButton => _hide;
 
     /// <summary>The rows that show now, in their order.</summary>
     public IReadOnlyList<LibraryTreeRow> Rows => _rows;
@@ -154,6 +162,22 @@ public sealed class ConnectionTree : UserControl
     }
 
     public void Refresh() => Refresh(Selected?.Id);
+
+    /// <summary>Nothing chosen in the tree ("Alle Verbindungen" or another page is the current one).</summary>
+    public void ClearSelection() => _list.SelectedIndex = -1;
+
+    /// <summary>Chooses a folder (opened from elsewhere, e.g. "Verbindungen zeigen" of the folder page).</summary>
+    public void Choose(Guid folderId)
+    {
+        if (LibraryService.FolderChain(LibraryService.FindFolder(folderId)?.ParentId).Count(_expanded.Add) > 0)
+        {
+            RememberExpanded();
+        }
+
+        Refresh(folderId);
+    }
+
+    private int IndexOf(Guid id) => _rows.ToList().FindIndex(row => row.Id == id);
 
     private void Refresh(Guid? select)
     {
@@ -274,7 +298,7 @@ public sealed class ConnectionTree : UserControl
         var items = new List<Control>();
         if (row.Folder is { } folder)
         {
-            items.Add(Item("monitor", "Verbindungen zeigen", () => main()?.ShowConnections(folder.Id)));
+            items.Add(Item("monitor", "Verbindungen zeigen", () => FolderChosen?.Invoke(this, folder.Id)));
             if (!locked)
             {
                 items.Add(Item("plus", "Neue Verbindung hier", () => main()?.ShowConnectionForm(null, folder.Id)));

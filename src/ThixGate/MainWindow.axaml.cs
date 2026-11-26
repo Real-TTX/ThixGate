@@ -20,8 +20,9 @@ namespace ThixGate;
 /// <summary>
 /// The main window: Verbindungen, Ordner, Zugangsdaten, Matgate, Einstellungen and About in one window (DESK-03/04). Forms open on top of a
 /// section and "Zurück" (or Esc) returns to where they were opened. Closing the window only hides it: ThixGate keeps running in the
-/// tray / menu bar (sessions stay open). Beside the menu the library as a tree (<see cref="ConnectionTree"/>), on every page. Keys: Ctrl/Cmd+1…4
-/// the sections, +, the settings, +B fold the menu, +L show or hide the tree, +N a new connection, +F the search, Esc back.
+/// tray / menu bar (sessions stay open). The menu is the library as a tree (<see cref="LibraryNav"/>: a folder shows its connections) with
+/// the other sections below it. Keys: Ctrl/Cmd+1…4 the sections (2: the folder page), +, the settings, +B fold the menu, +N a new
+/// connection, +F the search, Esc back.
 /// </summary>
 public partial class MainWindow : MatWindow
 {
@@ -40,7 +41,6 @@ public partial class MainWindow : MatWindow
     private readonly DispatcherTimer _sizeTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
     private readonly DispatcherTimer _sessionTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly MatNavItem _navConnections;
-    private readonly MatNavItem _navFolders;
     private readonly MatNavItem _navCredentials;
     private readonly MatNavItem _navMatgate;
     private readonly MatNavItem _navSettings;
@@ -61,17 +61,18 @@ public partial class MainWindow : MatWindow
         };
 
         var command = Ui.CommandKey.Name;
-        _navConnections = new MatNavItem("monitor", "Verbindungen", $"{command}+1") { IsCurrent = true };
-        _navFolders = new MatNavItem("folder", "Ordner", $"{command}+2");
+        _navConnections = Sidebar.ConnectionsItem;
+        _navConnections.Shortcut = $"{command}+1";
+        _navConnections.IsCurrent = true;
         _navCredentials = new MatNavItem("key", "Zugangsdaten", $"{command}+3");
         _navMatgate = new MatNavItem("server", "Matgate", $"{command}+4");
         _navSettings = new MatNavItem("settings", "Einstellungen", $"{command}+,");
-        Sidebar.Items.AddRange([_navConnections, _navFolders, _navCredentials, _navMatgate]);
+        Sidebar.Items.AddRange([_navCredentials, _navMatgate]);
         Sidebar.Settings = _navSettings;
         Sidebar.Version = AppInfo.Version;
         Sidebar.Channel = AppInfo.Channel;
-        Sidebar.TitleBar = TitleBar;
         Sidebar.IsFolded = settings.IsSidebarCollapsed;
+        Sidebar.Tree.FolderChosen += (_, folderId) => ShowConnections(folderId);
         Sidebar.FoldShortcut = $"{command}+B";
         Sidebar.ItemInvoked += (_, item) => OnNavInvoked(item);
         Sidebar.AboutRequested += (_, _) => ShowAbout();
@@ -82,9 +83,8 @@ public partial class MainWindow : MatWindow
             ApplySidebar();
         };
         AddToMenuFoot();
-        Tree.HideRequested += (_, _) => ToggleTree();
-        TreeSplitter.DragCompleted += (_, _) => SettingsService.Remember(current => current with { TreeWidth = BodyGrid.ColumnDefinitions[1].ActualWidth });
-        ApplyTree();
+        TreeSplitter.DragDelta += (_, _) => TitleBar.BrandWidth = BodyGrid.ColumnDefinitions[0].ActualWidth;
+        TreeSplitter.DragCompleted += (_, _) => SettingsService.Remember(current => current with { TreeWidth = BodyGrid.ColumnDefinitions[0].ActualWidth });
         PageHost.Content = _connections;
 
         _sizeTimer.Tick += (_, _) =>
@@ -117,7 +117,7 @@ public partial class MainWindow : MatWindow
         SettingsService.Changed += (_, _) => Ui.Post(() =>
         {
             RefreshCloudStatus();
-            ApplyTree();
+            ApplyMenuWidth();
         });
         ApplySidebar();
     }
@@ -162,13 +162,10 @@ public partial class MainWindow : MatWindow
 
     public void ToggleSidebar() => Sidebar.IsFolded = !Sidebar.IsFolded;
 
-    /// <summary>The tree column of the library.</summary>
-    public ConnectionTree LibraryTree => Tree;
+    /// <summary>The library as a tree, the upper part of the menu.</summary>
+    public ConnectionTree LibraryTree => Sidebar.Tree;
 
-    public bool IsTreeShown => Tree.IsVisible;
-
-    /// <summary>Shows or hides the tree column (remembered for the next start).</summary>
-    public void ToggleTree() => SettingsService.Remember(current => current with { IsTreeHidden = !current.IsTreeHidden });
+    public LibraryNav Menu => Sidebar;
 
     /// <summary>Tray, second start, Dock: show the window in front.</summary>
     public void ShowFromTray()
@@ -185,17 +182,23 @@ public partial class MainWindow : MatWindow
 
     // ---------------------------------------------------------------------------------------------------------------- sections
 
-    /// <summary>"Verbindungen" (optionally of one folder).</summary>
+    /// <summary>"Alle Verbindungen", or the connections of one folder (the folder is the chosen one in the tree).</summary>
     public void ShowConnections(Guid? folderId = null)
     {
-        ShowSection(_navConnections, _connections);
-        if (folderId is not null)
+        if (folderId is not { } folder)
         {
-            _connections.ShowFolder(folderId.Value);
+            ShowSection(_navConnections, _connections);
+            _connections.ShowAll();
+            return;
         }
+
+        ShowSection(null, _connections);
+        _connections.ShowFolder(folder);
+        Sidebar.Tree.Choose(folder);
     }
 
-    public void ShowFolders() => ShowSection(_navFolders, _folders.Value);
+    /// <summary>The folder page (Ctrl/Cmd+2; the folders live in the tree of the menu).</summary>
+    public void ShowFolders() => ShowSection(null, _folders.Value);
 
     public void ShowCredentials() => ShowSection(_navCredentials, _credentials.Value);
 
@@ -221,7 +224,7 @@ public partial class MainWindow : MatWindow
         Push(_connectionForm);
         if (connectionId is { } id)
         {
-            Tree.Reveal(id);
+            Sidebar.Tree.Reveal(id);
         }
     }
 
@@ -331,10 +334,6 @@ public partial class MainWindow : MatWindow
                 e.Handled = true;
                 ToggleSidebar();
                 break;
-            case Key.L when withCommand:
-                e.Handled = true;
-                ToggleTree();
-                break;
             case Key.N when withCommand && !AccessPolicy.IsConfigurationLocked:
                 e.Handled = true;
                 ShowConnectionForm(null);
@@ -355,10 +354,6 @@ public partial class MainWindow : MatWindow
         if (item == _navSettings)
         {
             ShowSettings();
-        }
-        else if (item == _navFolders)
-        {
-            ShowFolders();
         }
         else if (item == _navCredentials)
         {
@@ -408,22 +403,24 @@ public partial class MainWindow : MatWindow
         Sidebar.Foot = new StackPanel { Spacing = 10, Margin = new Thickness(0, 12, 0, 10), Children = { CloudStatus } };
     }
 
-    /// <summary>The tree column as the settings say: its width, or hidden (width 0, no splitter).</summary>
-    private void ApplyTree()
+    /// <summary>The width of the menu: the remembered one while it is open (the splitter at its edge changes it), the rail folded; the brand of the title bar follows.</summary>
+    private void ApplyMenuWidth()
     {
-        var settings = SettingsService.Get();
-        var shown = !settings.IsTreeHidden;
-        var column = BodyGrid.ColumnDefinitions[1];
-        column.MinWidth = shown ? SettingsService.TreeMinWidth : 0;
-        column.MaxWidth = shown ? SettingsService.TreeMaxWidth : 0;
-        column.Width = new GridLength(shown ? settings.TreeWidth : 0);
-        Tree.IsVisible = shown;
-        TreeSplitter.IsVisible = shown;
+        var folded = IsSidebarCollapsed;
+        var width = folded ? LibraryNav.RailWidth : SettingsService.Get().TreeWidth;
+        var column = BodyGrid.ColumnDefinitions[0];
+        column.MinWidth = folded ? LibraryNav.RailWidth : SettingsService.TreeMinWidth;
+        column.MaxWidth = folded ? LibraryNav.RailWidth : SettingsService.TreeMaxWidth;
+        column.Width = new GridLength(width);
+        TreeSplitter.IsVisible = !folded;
+        TitleBar.BrandWidth = width;
+        TitleBar.IsNameVisible = !folded || OperatingSystem.IsMacOS();
     }
 
     private void ApplySidebar()
     {
         var folded = IsSidebarCollapsed;
+        ApplyMenuWidth();
         CloudText.IsVisible = !folded;
         CloudStatus.HorizontalContentAlignment = folded ? HorizontalAlignment.Center : HorizontalAlignment.Left;
         Sidebar.UpdateVersion = UpdateService.LastResult is { IsUpdateAvailable: true, Manifest: { } manifest } ? manifest.Version : null;

@@ -219,12 +219,11 @@ public sealed class LibraryTests : IDisposable
     }
 
     [Fact]
-    public void The_tree_column_is_remembered_within_its_limits()
+    public void The_width_of_the_menu_and_its_open_folders_are_remembered_within_limits()
     {
-        SettingsService.Remember(settings => settings with { IsTreeHidden = true, TreeWidth = 5000, ExpandedFolders = [SampleData.LabFolderId, SampleData.LabFolderId] });
+        SettingsService.Remember(settings => settings with { TreeWidth = 5000, ExpandedFolders = [SampleData.LabFolderId, SampleData.LabFolderId] });
         SettingsStore.Reset();
         var read = SettingsService.Get();
-        Assert.True(read.IsTreeHidden);
         Assert.Equal(SettingsService.TreeMaxWidth, read.TreeWidth);
         Assert.Equal([SampleData.LabFolderId], read.ExpandedFolders);
     }

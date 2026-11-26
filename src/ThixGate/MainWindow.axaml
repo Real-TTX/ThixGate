@@ -7,8 +7,8 @@
                WindowStartupLocation="CenterScreen">
   <!--
     The one window of ThixGate in MatDesktop's chrome: the title bar (DESK-03: logo and word mark, the open sessions in the middle, the
-    caption buttons on Windows, the traffic lights on macOS), the menu (DESK-04: Verbindungen, Ordner, Zugangsdaten, Matgate,
-    Einstellungen below a line, at its foot the cloud state, the version = About and the fold to a rail), the library as a tree and the page.
+    caption buttons on Windows, the traffic lights on macOS), the menu (LibraryNav: the library as a tree with "Alle Verbindungen", below a line
+    Zugangsdaten, Matgate, Einstellungen, at its foot the cloud state, the version = About and the fold to a rail) and the page.
   -->
   <Grid RowDefinitions="Auto,*">
     <mat:MatTitleBar x:Name="TitleBar" AppName="ThixGate">
@@ -29,14 +29,13 @@
       </mat:MatTitleBar.Center>
     </mat:MatTitleBar>
 
-    <!-- The menu, the tree column of the library (its width is dragged at the splitter and remembered; hidden: width 0), the page -->
-    <Grid Grid.Row="1" x:Name="BodyGrid" ColumnDefinitions="Auto,270,*">
-      <mat:MatNav x:Name="Sidebar" AppName="ThixGate" />
-      <controls:ConnectionTree Grid.Column="1" x:Name="Tree" />
-      <GridSplitter Grid.Column="1" x:Name="TreeSplitter" Width="5" HorizontalAlignment="Right" Background="Transparent" ResizeDirection="Columns"
+    <!-- The menu with the library as a tree (its width is dragged at the splitter at its edge and remembered; folded: the rail), the page -->
+    <Grid Grid.Row="1" x:Name="BodyGrid" ColumnDefinitions="270,*">
+      <controls:LibraryNav x:Name="Sidebar" AppName="ThixGate" />
+      <GridSplitter Grid.Column="0" x:Name="TreeSplitter" Width="5" HorizontalAlignment="Right" Background="Transparent" ResizeDirection="Columns"
                     ResizeBehavior="CurrentAndNext" Cursor="SizeWestEast"
-                    AutomationProperties.Name="Breite der Bibliothek" />
-      <ContentControl Grid.Column="2" x:Name="PageHost" />
+                    AutomationProperties.Name="Breite des Menüs" />
+      <ContentControl Grid.Column="1" x:Name="PageHost" />
     </Grid>
   </Grid>
 </mat:MatWindow>
