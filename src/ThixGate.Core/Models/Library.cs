@@ -117,6 +117,12 @@ public sealed record RemoteConnection
     /// </summary>
     public Guid? MatgateConnectionId { get; init; }
 
+    /// <summary>
+    /// RDP, VNC über Matgate: the session runs on Matgate (with Matgate's login, the picture comes to ThixGate) instead of ThixGate's
+    /// engine going through the relay - for a connection whose password only Matgate knows, or that the user may only watch.
+    /// </summary>
+    public bool SessionOnMatgate { get; init; }
+
     // ---- Kept by the app ----
 
     public DateTimeOffset? LastUsed { get; init; }

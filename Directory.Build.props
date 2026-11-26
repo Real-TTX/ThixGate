@@ -32,7 +32,7 @@
   -->
   <PropertyGroup>
     <ThixGateMajor>0</ThixGateMajor>
-    <ThixGateMinor>2</ThixGateMinor>
+    <ThixGateMinor>3</ThixGateMinor>
 
     <BuildNumber Condition="'$(BuildNumber)' == ''">0</BuildNumber>
     <Channel Condition="'$(Channel)' == ''">local</Channel>

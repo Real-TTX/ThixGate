@@ -26,6 +26,7 @@ public static class SampleData
     public static readonly Guid MatgateErpId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000041");
     public static readonly Guid MatgateSqlId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000042");
     public static readonly Guid MatgateGitId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000043");
+    public static readonly Guid MatgateWatchId = Guid.Parse("6f1c2a10-0000-4000-8000-000000000044");
 
     /// <summary>Writes the sample library (the data folder must be a fresh one).</summary>
     public static void Create()
@@ -39,12 +40,13 @@ public static class SampleData
         MatgateStore.Write(MatgateAccountId, new MatgateLibrary
         {
             Revision = "sample",
-            User = new MatgateLibraryUser { UserName = "anna", DisplayName = "Anna Schmidt" },
+            User = new MatgateLibraryUser { UserName = "anna", DisplayName = "Anna Schmidt", CanCreatePrivate = true },
             Folders = [new() { Path = "Kunden", Name = "Kunden" }, new() { Path = "Kunden/Müller GmbH", Name = "Müller GmbH", Parent = "Kunden" }, new() { Path = "Rechenzentrum", Name = "Rechenzentrum" }],
             Connections =
             [
                 new() { Id = MatgateErpId, Name = "ERP Müller", Protocol = "rdp", Host = "erp.mueller-gmbh.de", Port = 3390, UserName = "support", Domain = "MUELLER", Folder = "Kunden/Müller GmbH", Level = "Connect", KeyboardLayout = "de-de-qwertz", HasStoredLogin = true },
-                new() { Id = MatgateSqlId, Name = "SQL-Server", Protocol = "rdp", Host = "sql01.rz.local", Port = 3389, Folder = "Rechenzentrum", Level = "Edit", KeyboardLayout = "de-de-qwertz" },
+                new() { Id = MatgateSqlId, Name = "SQL-Server", Protocol = "rdp", Host = "sql01.rz.local", Port = 3389, Folder = "Rechenzentrum", Level = "Manage", KeyboardLayout = "de-de-qwertz", IsPrivate = true, CanDelete = true },
+                new() { Id = MatgateWatchId, Name = "Leitstand", Protocol = "vnc", Host = "leitstand.rz.local", Port = 5900, Folder = "Rechenzentrum", Level = "ReadOnly", HasStoredLogin = true },
                 new() { Id = MatgateGitId, Name = "Git", Protocol = "ssh", Host = "git.rz.local", Port = 22, UserName = "git", Folder = "Rechenzentrum", Level = "Connect" },
             ],
         });
@@ -70,7 +72,7 @@ public static class SampleData
         LibraryService.SaveConnection(new RemoteConnection
         {
             Id = MuellerErpId, Name = "ERP Müller", Protocol = ConnectionProtocol.Rdp, Host = "erp.mueller-gmbh.de", Port = 3390, FolderId = MuellerFolderId,
-            UserName = "support", Domain = "MUELLER", Via = ConnectVia.Matgate, MatgateAccountId = MatgateAccountId, MatgateConnectionId = MatgateErpId,
+            UserName = "support", Domain = "MUELLER", Via = ConnectVia.Matgate, MatgateAccountId = MatgateAccountId, MatgateConnectionId = MatgateErpId, SessionOnMatgate = true,
             Tags = "Kunde",
         });
         LibraryService.SaveConnection(new RemoteConnection

@@ -213,8 +213,7 @@ public sealed class SessionWindow : Window, IScreenHost
         IScreenBackend? backend = null;
         try
         {
-            var target = await SessionTargets.ResolveAsync(_connection, login, _wantedWidth, _wantedHeight, token);
-            backend = ScreenBackends.Create(target, this);
+            backend = await SessionTargets.BackendAsync(_connection, login, _wantedWidth, _wantedHeight, this, token);
             _backend = backend;
             await backend.ConnectAsync(token);
             LibraryService.MarkUsed(_connection.Id);
@@ -437,7 +436,8 @@ public sealed class SessionWindow : Window, IScreenHost
 
     async Task<ScreenCredentials?> IScreenHost.AskAsync(string[] need, string userName, string domain, bool failed, CancellationToken cancellationToken)
     {
-        var canRemember = _connection.CredentialId is not null && !AccessPolicy.ArePasswordsDisabled;
+        // A session on Matgate signs in there: what is typed goes to Matgate, nothing is kept here.
+        var canRemember = _connection.CredentialId is not null && !AccessPolicy.ArePasswordsDisabled && !_connection.SessionOnMatgate;
         var answer = await Dispatcher.UIThread.InvokeAsync(() => SignInDialog.AskAsync(this, _connection.Name, need, userName, domain, failed, canRemember));
         if (answer is null)
         {

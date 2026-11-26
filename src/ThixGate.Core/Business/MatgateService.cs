@@ -309,11 +309,17 @@ public static class MatgateService
 
     /// <summary>
     /// A connection of Matgate as ThixGate opens it: over Matgate's relay, with the login ThixGate has (the user name from Matgate,
-    /// the password asked at connect). Not saved; <see cref="TakeOver"/> saves one.
+    /// the password asked at connect) - or, for a remote desktop whose login only Matgate has or that may only be watched, as a session
+    /// on Matgate. Not saved; <see cref="TakeOver"/> saves one.
     /// </summary>
     public static RemoteConnection AsConnection(Guid accountId, MatgateConnectionItem item)
     {
         var protocol = item.ProtocolKind ?? throw new BusinessException("ThixGate öffnet nur Remote Desktop, VNC und SSH.");
+        if (item.IsWatchOnly && protocol == ConnectionProtocol.Ssh)
+        {
+            throw new BusinessException("Dieses Terminal darfst du in Matgate nur ansehen – das geht nur in Matgate selbst.");
+        }
+
         return new RemoteConnection
         {
             Id = item.Id,
@@ -329,6 +335,7 @@ public static class MatgateService
             Via = ConnectVia.Matgate,
             MatgateAccountId = accountId,
             MatgateConnectionId = item.Id,
+            SessionOnMatgate = protocol != ConnectionProtocol.Ssh && (item.HasStoredLogin || item.IsWatchOnly),
         };
     }
 
@@ -354,6 +361,183 @@ public static class MatgateService
             ?? throw new BusinessException("Diese Verbindung gibt es in Matgate nicht (mehr).");
         var connection = AsConnection(accountId, item) with { Id = Guid.NewGuid(), FolderId = EnsureFolder(item.Folder) };
         return LibraryService.SaveConnection(connection);
+    }
+
+    // ---- Writing back (Matgate's POST/PUT/DELETE /app/api/connections) ----
+
+    /// <summary>
+    /// Creates (<paramref name="matgateConnectionId"/> null) or changes a connection in the account's Matgate, then reads the library
+    /// again. Matgate decides who may: creating needs "Verbindungen anlegen" (own) or "verwalten" (shared), changing "Bearbeiten".
+    /// Only what a connection is goes there - never a password.
+    /// </summary>
+    public static async Task<MatgateConnectionItem> SaveConnectionAsync(Guid accountId, Guid? matgateConnectionId, MatgateConnectionDraft draft, CancellationToken cancellationToken = default)
+    {
+        AccessPolicy.EnsureMatgateAllowed();
+        var checkedDraft = CheckDraft(draft);
+        var account = Require(accountId);
+        var token = ReadToken(account) ?? throw new BusinessException($"Bitte zuerst bei „{account.Name}“ anmelden.");
+        var body = new
+        {
+            name = checkedDraft.Name,
+            protocol = checkedDraft.Protocol.ToString().ToLowerInvariant(),
+            host = checkedDraft.Host,
+            port = checkedDraft.Port,
+            userName = checkedDraft.UserName,
+            domain = checkedDraft.Protocol == ConnectionProtocol.Rdp ? checkedDraft.Domain : "",
+            folder = checkedDraft.Folder,
+            notes = checkedDraft.Notes,
+            keyboardLayout = checkedDraft.KeyboardLayout,
+            ignoreCertificate = checkedDraft.IgnoreCertificate,
+            shared = matgateConnectionId is null ? checkedDraft.Shared : (bool?)null,
+        };
+
+        MatgateConnectionItem saved;
+        try
+        {
+            using var http = CreateHttp(token);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            using var response = matgateConnectionId is { } id
+                ? await http.PutAsJsonAsync($"{account.ServerUrl}/app/api/connections/{id:D}", body, timeout.Token)
+                : await http.PostAsJsonAsync($"{account.ServerUrl}/app/api/connections", body, timeout.Token);
+            await ThrowForAsync(response, account, timeout.Token);
+            saved = MatgateStore.ParseConnection(await response.Content.ReadAsStringAsync(timeout.Token));
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            throw new BusinessException($"Matgate ist unter {account.ServerUrl} nicht erreichbar.");
+        }
+
+        Log.Info($"Matgate {accountId}: connection {saved.Id} {(matgateConnectionId is null ? "created" : "changed")}.");
+        await RefreshQuietlyAsync(accountId, cancellationToken);
+        return saved;
+    }
+
+    /// <summary>Deletes a connection in the account's Matgate ("Verwalten" on it), then reads the library again.</summary>
+    public static async Task DeleteConnectionAsync(Guid accountId, Guid matgateConnectionId, CancellationToken cancellationToken = default)
+    {
+        AccessPolicy.EnsureMatgateAllowed();
+        var account = Require(accountId);
+        var token = ReadToken(account) ?? throw new BusinessException($"Bitte zuerst bei „{account.Name}“ anmelden.");
+        try
+        {
+            using var http = CreateHttp(token);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            using var response = await http.DeleteAsync($"{account.ServerUrl}/app/api/connections/{matgateConnectionId:D}", timeout.Token);
+            await ThrowForAsync(response, account, timeout.Token);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            throw new BusinessException($"Matgate ist unter {account.ServerUrl} nicht erreichbar.");
+        }
+
+        Log.Info($"Matgate {accountId}: connection {matgateConnectionId} deleted.");
+        await RefreshQuietlyAsync(accountId, cancellationToken);
+    }
+
+    /// <summary>The checks of the form, before anything goes to Matgate (Matgate checks again).</summary>
+    public static MatgateConnectionDraft CheckDraft(MatgateConnectionDraft draft)
+    {
+        var cleaned = draft with
+        {
+            Name = draft.Name.Trim(),
+            Host = draft.Host.Trim(),
+            UserName = draft.UserName.Trim(),
+            Domain = draft.Protocol == ConnectionProtocol.Rdp ? draft.Domain.Trim() : "",
+            Folder = string.Join('/', draft.Folder.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)),
+            Notes = draft.Notes.Trim(),
+        };
+        if (!Enum.IsDefined(cleaned.Protocol))
+        {
+            throw new BusinessException("Dieses Protokoll gibt es nicht.", nameof(MatgateConnectionDraft.Protocol));
+        }
+
+        if (cleaned.Name.Length == 0)
+        {
+            throw new BusinessException("Bitte geben Sie der Verbindung einen Namen.", nameof(MatgateConnectionDraft.Name));
+        }
+
+        if (cleaned.Name.Length > 200)
+        {
+            throw new BusinessException("Der Name ist zu lang (höchstens 200 Zeichen).", nameof(MatgateConnectionDraft.Name));
+        }
+
+        if (cleaned.Host.Length == 0)
+        {
+            throw new BusinessException("Bitte geben Sie die Adresse an.", nameof(MatgateConnectionDraft.Host));
+        }
+
+        if (cleaned.Host.Length > 253 || cleaned.Host.Any(character => char.IsWhiteSpace(character) || char.IsControl(character)))
+        {
+            throw new BusinessException("Diese Adresse ist ungültig.", nameof(MatgateConnectionDraft.Host));
+        }
+
+        if (cleaned.Port is < 0 or > 65535)
+        {
+            throw new BusinessException("Der Port liegt zwischen 1 und 65535 (leer: Standard).", nameof(MatgateConnectionDraft.Port));
+        }
+
+        return cleaned;
+    }
+
+    // Matgate's answer as a message at the right field.
+    private static async Task ThrowForAsync(HttpResponseMessage response, MatgateAccount account, CancellationToken cancellationToken)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            throw new BusinessException($"Dieser Computer ist bei „{account.Name}“ nicht mehr angemeldet – bitte neu anmelden.");
+        }
+
+        ProblemAnswer? problem = null;
+        try
+        {
+            problem = await response.Content.ReadFromJsonAsync<ProblemAnswer>(cancellationToken);
+        }
+        catch (Exception exception) when (exception is System.Text.Json.JsonException or NotSupportedException)
+        {
+        }
+
+        var field = problem?.Field switch
+        {
+            "name" => nameof(MatgateConnectionDraft.Name),
+            "host" => nameof(MatgateConnectionDraft.Host),
+            "port" => nameof(MatgateConnectionDraft.Port),
+            "protocol" => nameof(MatgateConnectionDraft.Protocol),
+            "userName" => nameof(MatgateConnectionDraft.UserName),
+            "folder" => nameof(MatgateConnectionDraft.Folder),
+            "notes" => nameof(MatgateConnectionDraft.Notes),
+            _ => null,
+        };
+        var message = (response.StatusCode, problem?.Error) switch
+        {
+            (HttpStatusCode.Forbidden, _) => $"Das darfst du in „{account.Name}“ nicht (dafür braucht es dort die passenden Rechte).",
+            (HttpStatusCode.NotFound, _) => $"Diese Verbindung gibt es in „{account.Name}“ nicht (mehr).",
+            (_, "required") => "Bitte ausfüllen.",
+            (_, "too_long") => "Das ist zu lang.",
+            (_, "invalid") => "Das ist ungültig.",
+            (_, "protocol_fixed") => "Das Protokoll einer Verbindung lässt sich in Matgate nicht ändern.",
+            (_, "protocol") => "Matgate nimmt hier nur Remote Desktop, VNC und SSH an.",
+            _ => $"Matgate hat das nicht angenommen ({(int)response.StatusCode}).",
+        };
+        throw new BusinessException(message, field);
+    }
+
+    private static async Task RefreshQuietlyAsync(Guid accountId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await RefreshLibraryAsync(accountId, cancellationToken);
+        }
+        catch (BusinessException exception)
+        {
+            Log.Warning($"Matgate {accountId}: {exception.Message}");
+        }
     }
 
     /// <summary>The device token of a signed-in account (for the relay).</summary>
@@ -428,6 +612,10 @@ public static class MatgateService
         [property: JsonPropertyName("token")] string? Token,
         [property: JsonPropertyName("deviceId")] Guid DeviceId,
         [property: JsonPropertyName("user")] TokenUser? User);
+
+    private sealed record ProblemAnswer(
+        [property: JsonPropertyName("error")] string? Error,
+        [property: JsonPropertyName("field")] string? Field);
 
     private sealed record TokenUser(
         [property: JsonPropertyName("userName")] string? UserName,

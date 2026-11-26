@@ -11,9 +11,11 @@ namespace ThixGate.UiTests;
 
 /// <summary>
 /// ThixGate against a real Matgate: the app sign-in through Matgate's pages (a browser of HttpClient: sign-in form, "ThixGate
-/// zulassen", back to 127.0.0.1), the library, and real RDP / VNC sessions through Matgate's relay into the test desktop of Matgate
-/// (Matgate/tests/desktop). Opt-in: THIXGATE_E2E_MATGATE (address), THIXGATE_E2E_MATGATE_USER, THIXGATE_E2E_MATGATE_PASSWORD - a test
-/// Matgate whose RDP/VNC connections lead to the test desktop (its test credentials: demo / demo-only-pw, VNC demo-pw1).
+/// zulassen", back to 127.0.0.1), the library, real RDP / VNC sessions through Matgate's relay into the test desktop of Matgate
+/// (Matgate/tests/desktop), the same as sessions on Matgate (for connections with a password stored in Matgate), and writing a
+/// connection back. Opt-in: THIXGATE_E2E_MATGATE (address), THIXGATE_E2E_MATGATE_USER, THIXGATE_E2E_MATGATE_PASSWORD - a test
+/// Matgate whose RDP/VNC connections lead to the test desktop (its test credentials: demo / demo-only-pw, VNC demo-pw1; stored in
+/// Matgate for the sessions on Matgate) and whose user may create connections.
 /// </summary>
 public sealed partial class MatgateEndToEndTests
 {
@@ -55,10 +57,36 @@ public sealed partial class MatgateEndToEndTests
             {
                 CredentialId = item.Protocol == "vnc" ? vncCredential.Id : rdpCredential.Id,
                 Resolution = "1280x800",
+                SessionOnMatgate = false,
             });
             Assert.Equal(ConnectVia.Matgate, connection.Via);
-            Session(connection, item.Name);
+            Session(connection, item.Name, "relay");
         }
+
+        // Stage 3: the session on Matgate - Matgate signs in with the password only it has, the picture comes as pieces of the screen.
+        foreach (var item in screens.Where(item => item.HasStoredLogin))
+        {
+            var connection = MatgateService.AsConnection(account.Id, item) with { Resolution = "1280x800" };
+            Assert.True(connection.SessionOnMatgate);
+            Session(connection, item.Name + " (auf Matgate)", "matgate");
+        }
+
+        // Stage 3: writing back - create, change, delete; the library follows.
+        var create = MatgateService.SaveConnectionAsync(account.Id, null, new MatgateConnectionDraft
+        {
+            Name = "E2E neu", Protocol = ConnectionProtocol.Rdp, Host = "127.0.0.1", Port = 13389, UserName = "demo", Folder = "Labor/E2E", Shared = false,
+        });
+        Wait(create, TimeSpan.FromSeconds(15));
+        var created = create.Result;
+        Assert.Equal(("E2E neu", "Labor/E2E", "Manage"), (created.Name, created.Folder, created.Level));
+        Assert.Contains(MatgateService.Library(account.Id)!.Connections, item => item.Id == created.Id);
+        var change = MatgateService.SaveConnectionAsync(account.Id, created.Id, MatgateConnectionDraft.Of(created) with { Name = "E2E geaendert" });
+        Wait(change, TimeSpan.FromSeconds(15));
+        Assert.Equal("E2E geaendert", MatgateService.Library(account.Id)!.Connections.Single(item => item.Id == created.Id).Name);
+        Assert.False(MatgateService.Library(account.Id)!.Connections.Single(item => item.Id == created.Id).HasStoredLogin);
+        var delete = MatgateService.DeleteConnectionAsync(account.Id, created.Id);
+        Wait(delete, TimeSpan.FromSeconds(15));
+        Assert.DoesNotContain(MatgateService.Library(account.Id)!.Connections, item => item.Id == created.Id);
 
         var signOut = MatgateService.SignOutAsync(account.Id);
         Wait(signOut, TimeSpan.FromSeconds(15));
@@ -92,7 +120,7 @@ public sealed partial class MatgateEndToEndTests
         await browser.GetStringAsync(back);
     }
 
-    private static void Session(RemoteConnection connection, string name)
+    private static void Session(RemoteConnection connection, string name, string kind)
     {
         var window = SessionWindow.Show(connection);
         try
@@ -111,7 +139,7 @@ public sealed partial class MatgateEndToEndTests
             if (Environment.GetEnvironmentVariable("THIXGATE_SCREENSHOTS") is { } shots)
             {
                 Directory.CreateDirectory(shots);
-                window.CaptureRenderedFrame()?.Save(Path.Combine(shots, $"relay-{connection.Protocol}-{connection.EffectivePort}.png"));
+                window.CaptureRenderedFrame()?.Save(Path.Combine(shots, $"{kind}-{connection.Protocol}-{connection.EffectivePort}.png"));
             }
 
             Assert.True(window.IsConnected, $"{name}: not connected: {window.StateText}");

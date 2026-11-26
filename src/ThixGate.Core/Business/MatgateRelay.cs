@@ -90,7 +90,8 @@ public static class MatgateRelay
         return builder.Uri;
     }
 
-    private static async Task<WebSocket> ConnectAsync(Uri uri, string token, MatgateAccount account, CancellationToken cancellationToken)
+    // A WebSocket to Matgate's app API with the device token (the relay, and the session on Matgate: MatgateScreen); refusals as messages.
+    internal static async Task<WebSocket> ConnectAsync(Uri uri, string token, MatgateAccount account, CancellationToken cancellationToken)
     {
         if (ConnectForTests is { } connect)
         {
@@ -122,7 +123,7 @@ public static class MatgateRelay
                 HttpStatusCode.BadGateway => $"„{account.Name}“ erreicht den Host dieser Verbindung nicht.",
                 HttpStatusCode.TooManyRequests => $"„{account.Name}“ nimmt gerade keine weitere Verbindung an – bitte gleich noch einmal.",
                 0 => $"„{account.Name}“ ist unter {account.ServerUrl} nicht erreichbar.",
-                _ => $"„{account.Name}“ hat die Durchleitung abgelehnt ({(int)status}).",
+                _ => $"„{account.Name}“ hat die Verbindung abgelehnt ({(int)status}).",
             });
         }
     }

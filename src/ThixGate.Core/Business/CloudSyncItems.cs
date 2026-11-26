@@ -150,7 +150,7 @@ internal static class CloudSyncItems
         var accounts = SettingsService.Get().MatgateAccounts;
         if (connection.MatgateAccountId is { } account && accounts.All(known => known.Id != account))
         {
-            connection = connection with { Via = ConnectVia.Direct, MatgateAccountId = null, MatgateConnectionId = null };
+            connection = connection with { Via = ConnectVia.Direct, MatgateAccountId = null, MatgateConnectionId = null, SessionOnMatgate = false };
         }
 
         Store(SyncCollections.Connections, item, library =>

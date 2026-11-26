@@ -64,6 +64,20 @@ public static class SessionTargets
         return ScreenTargetOf(connection, login, fitWidth, fitHeight, through);
     }
 
+    /// <summary>
+    /// The backend of a session: a session on Matgate (<see cref="RemoteConnection.SessionOnMatgate"/>, shown by <see cref="MatgateScreen"/>),
+    /// or the engine's own RDP/VNC client - directly or through the relay of its Matgate.
+    /// </summary>
+    public static async Task<IScreenBackend> BackendAsync(RemoteConnection connection, SessionLogin login, int fitWidth, int fitHeight, IScreenHost host, CancellationToken cancellationToken)
+    {
+        if (connection.Via == ConnectVia.Matgate && connection.SessionOnMatgate)
+        {
+            return MatgateScreen.For(connection, fitWidth, fitHeight, host);
+        }
+
+        return ScreenBackends.Create(await ResolveAsync(connection, login, fitWidth, fitHeight, cancellationToken), host);
+    }
+
     /// <summary>The names of Matgate's quality levels (ScreenQuality.From).</summary>
     public static string QualityName(SessionQuality quality) => quality switch
     {

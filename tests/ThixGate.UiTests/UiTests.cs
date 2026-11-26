@@ -177,6 +177,48 @@ public sealed class UiTests
     }
 
     [AvaloniaFact]
+    public void A_connection_in_Matgate_is_edited_as_far_as_Matgate_allows()
+    {
+        using var data = new TestData();
+        SampleData.Create();
+        var window = Open();
+        window.ShowMatgateForm(SampleData.MatgateAccountId);
+        window.MatgateForm.Layout.Tabs.SelectedIndex = 1;
+        Settle(window);
+        Assert.Equal(4, window.MatgateForm.Connections.ItemCount);
+
+        // One she manages: everything but the protocol, delete too.
+        window.ShowMatgateConnectionForm(SampleData.MatgateAccountId, SampleData.MatgateSqlId);
+        Settle(window);
+        var form = window.MatgateConnectionForm;
+        Assert.Same(form, window.CurrentPage);
+        Assert.Equal("SQL-Server", form.NameBox.Text);
+        Assert.False(form.ProtocolChoice.IsEnabled);
+        Assert.True(form.Layout.Delete.IsVisible);
+        Assert.True(form.Layout.Save.IsEnabled);
+
+        // A name is checked here, before anything goes to Matgate.
+        form.NameBox.Text = "";
+        form.Layout.Save.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Settle(window);
+        Assert.Equal("Bitte geben Sie der Verbindung einen Namen.", form.Layout.Fields.Find(nameof(MatgateConnectionDraft.Name))!.Error);
+
+        // One she may only watch: no saving, no deleting. A new one: her own (no choice to share).
+        window.ShowMatgateConnectionForm(SampleData.MatgateAccountId, SampleData.MatgateWatchId);
+        Settle(window);
+        Assert.False(form.Layout.Save.IsEnabled);
+        Assert.False(form.Layout.Delete.IsVisible);
+        window.ShowMatgateConnectionForm(SampleData.MatgateAccountId, null);
+        Settle(window);
+        Assert.True(form.ProtocolChoice.IsEnabled);
+        Assert.False(form.SharedRow.IsVisible);
+        form.Layout.Back.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Settle(window);
+        Assert.IsType<MatgateForm>(window.CurrentPage);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void The_snapshot_draws_every_window_in_light_and_dark_at_its_natural_size()
     {
         using var data = new TestData();

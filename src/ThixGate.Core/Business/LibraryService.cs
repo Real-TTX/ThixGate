@@ -334,6 +334,12 @@ public static partial class LibraryService
             _ => normalized with { KeyFile = "" },
         };
 
+        // A session on Matgate is for remote desktops über Matgate only.
+        if (normalized.Via == ConnectVia.Direct || normalized.Protocol == ConnectionProtocol.Ssh)
+        {
+            normalized = normalized with { SessionOnMatgate = false };
+        }
+
         return normalized.Via == ConnectVia.Direct ? normalized with { MatgateAccountId = null, MatgateConnectionId = null } : normalized;
     }
 

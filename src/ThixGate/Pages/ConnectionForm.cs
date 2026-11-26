@@ -43,6 +43,8 @@ public sealed class ConnectionForm : UserControl
     private readonly ToggleSwitch _ignoreCertificate = new() { OnContent = "", OffContent = "" };
     private readonly ComboBox _via = new() { MinWidth = 320 };
     private readonly ComboBox _matgateConnection = new() { MinWidth = 320 };
+    private readonly ToggleSwitch _sessionOnMatgate = new() { OnContent = "", OffContent = "" };
+    private readonly Control _sessionOnMatgateRow;
     private readonly TextBox _notes = new() { AcceptsReturn = true, TextWrapping = Avalonia.Media.TextWrapping.Wrap, MinHeight = 140 };
     private readonly TextBox _tags = new() { Watermark = "z. B. Kunde, Produktion" };
     private readonly Button _connect = Ui.Button("play", "Verbinden");
@@ -112,11 +114,16 @@ public sealed class ConnectionForm : UserControl
         ]);
         _matgateField = fields.Add(nameof(RemoteConnection.MatgateConnectionId), "Verbindung in Matgate", _matgateConnection,
             "Matgate verbindet mit Adresse und Port seiner Verbindung (auch durch seinen Tunnel); Benutzer und Passwort kommen von hier.", gateway);
+        _sessionOnMatgateRow = FormFields.SwitchRow("Sitzung auf Matgate",
+            "Matgate selbst verbindet sich – mit der Anmeldung, die dort gespeichert ist – und schickt das Bild hierher. Für Verbindungen, deren Passwort nur Matgate kennt oder die du nur ansehen darfst.",
+            _sessionOnMatgate, isLast: true);
+        _matgateConnection.SelectionChanged += (_, _) => ApplyWatchOnly();
         EditLayout.ColumnOf(gateway).Children.AddRange(
         [
             fields.Add(nameof(RemoteConnection.MatgateAccountId), "Verbinden über", _via,
                 "Direkt von diesem Computer – oder über ein Matgate, wenn das Ziel nur von dort erreichbar ist (Matgate-Konten unter „Matgate“).", gateway),
             _matgateField,
+            _sessionOnMatgateRow,
         ]);
         EditLayout.ColumnOf(notes).Children.AddRange(
         [
@@ -211,6 +218,7 @@ public sealed class ConnectionForm : UserControl
         _matgateKeep = connection.MatgateConnectionId;
         _matgateConnection.SelectedIndex = -1;
         _matgateItems = [];
+        _sessionOnMatgate.IsChecked = connection.SessionOnMatgate;
         ApplyGateway();
         _notes.Text = connection.Notes;
         _tags.Text = connection.Tags;
@@ -272,6 +280,21 @@ public sealed class ConnectionForm : UserControl
             : library is null ? "Die Verbindungen dieses Matgate sind noch nicht gelesen"
             : _matgateItems.Count == 0 ? "Keine Verbindung dieses Protokolls in Matgate"
             : "Bitte wählen";
+        _sessionOnMatgateRow.IsVisible = account is not null && protocol != ConnectionProtocol.Ssh;
+        ApplyWatchOnly();
+    }
+
+    // A Matgate connection the user may only watch opens as a session on Matgate only.
+    private void ApplyWatchOnly()
+    {
+        var index = _matgateConnection.SelectedIndex;
+        var watchOnly = index >= 0 && index < _matgateItems.Count && _matgateItems[index].IsWatchOnly;
+        if (watchOnly)
+        {
+            _sessionOnMatgate.IsChecked = true;
+        }
+
+        _sessionOnMatgate.IsEnabled = !watchOnly;
     }
 
     private void ApplyProtocol()
@@ -328,6 +351,7 @@ public sealed class ConnectionForm : UserControl
             MatgateConnectionId = viaIndex > 0
                 ? (_matgateConnection.SelectedIndex >= 0 && _matgateConnection.SelectedIndex < _matgateItems.Count ? _matgateItems[_matgateConnection.SelectedIndex].Id : _matgateKeep)
                 : null,
+            SessionOnMatgate = viaIndex > 0 && _sessionOnMatgate.IsChecked == true,
             Notes = _notes.Text ?? "",
             Tags = _tags.Text ?? "",
         };

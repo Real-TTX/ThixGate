@@ -236,6 +236,43 @@ public sealed class EditLayout : UserControl
         }
     }
 
+    /// <summary>
+    /// <see cref="Run"/> for a save that goes over the network (Matgate): the buttons wait meanwhile; true when it went through.
+    /// </summary>
+    public async Task<bool> RunAsync(Func<Task> action)
+    {
+        Message.Hide();
+        Fields.Clear();
+        var buttons = new[] { Save, Delete, Back };
+        var enabled = buttons.Select(button => button.IsEnabled).ToArray();
+        foreach (var button in buttons)
+        {
+            button.IsEnabled = false;
+        }
+
+        try
+        {
+            await action();
+            return true;
+        }
+        catch (BusinessException exception)
+        {
+            if (!Fields.ShowError(exception.Field, exception.Message))
+            {
+                Message.Show(exception.Message, InfoSeverity.Error);
+            }
+
+            return false;
+        }
+        finally
+        {
+            for (var index = 0; index < buttons.Length; index++)
+            {
+                buttons[index].IsEnabled = enabled[index];
+            }
+        }
+    }
+
     /// <summary>The first tab again (a page loaded for another item).</summary>
     public void Reset()
     {

@@ -179,7 +179,8 @@ public sealed class MatgatePage : UserControl
 
 /// <summary>
 /// Add / edit a Matgate. Tabs: Allgemein (name, address, sign-in) | Verbindungen (Matgate's library: Verbinden, In Bibliothek
-/// übernehmen, Aktualisieren). Buttons: Speichern, Anmelden/Abmelden, Prüfen, Zurück … Entfernen.
+/// übernehmen, Neu in Matgate, Bearbeiten, Aktualisieren - as far as Matgate allows; deleting on <see cref="MatgateConnectionForm"/>).
+/// Buttons: Speichern, Anmelden/Abmelden, Prüfen, Zurück … Entfernen.
 /// </summary>
 public sealed class MatgateForm : UserControl
 {
@@ -192,8 +193,10 @@ public sealed class MatgateForm : UserControl
     private readonly DataTable<MatgateConnectionItem> _connections = new("Verbindungen in Matgate") { Height = 340 };
     private readonly TextBlock _libraryState = new() { TextWrapping = TextWrapping.Wrap };
     private readonly Button _connect = Ui.Button("play", "Verbinden", "MatButton.Primary");
-    private readonly Button _takeOver = Ui.Button("download", "In Bibliothek übernehmen");
+    private readonly Button _takeOver = Ui.Button("download", "Übernehmen");
     private readonly Button _reload = Ui.Button("refresh", "Aktualisieren");
+    private readonly Button _newInMatgate = Ui.Button("plus", "Neu in Matgate");
+    private readonly Button _editInMatgate = Ui.Button("edit", "Bearbeiten");
     private readonly TabItem _connectionsTab;
     private MatgateAccount? _existing;
 
@@ -215,11 +218,27 @@ public sealed class MatgateForm : UserControl
             .AddColumn("Protokoll", "110", item => DataTable<MatgateConnectionItem>.TextCell(item.ProtocolKind is { } kind ? Protocols.Of(kind).Name : item.Protocol))
             .AddColumn("Adresse", "2*", item => DataTable<MatgateConnectionItem>.TextCell(item.Port > 0 ? $"{item.Host}:{item.Port}" : item.Host))
             .AddColumn("Ordner", "1.5*", item => DataTable<MatgateConnectionItem>.TextCell(item.Folder.Length > 0 ? item.Folder.Replace("/", " › ") : "–", "Mat.TextMuted"))
+            .AddColumn("Recht", "110", item => DataTable<MatgateConnectionItem>.TextCell(LevelName(item.Level), "Mat.TextMuted"))
             .AddColumn("Eigene", "120", item => DataTable<MatgateConnectionItem>.TextCell(_existing is { } account && MatgateService.TakenOver(account.Id, item.Id) is not null ? "übernommen" : "–", "Mat.TextMuted"));
         _connections.SelectionChanged += (_, _) => ApplyLibraryButtons();
         _connections.ItemActivated += async (_, item) => await ConnectAsync(item);
-        var libraryActions = new ActionBar { Children = { _connect, _takeOver, _reload } };
+        var libraryActions = new ActionBar { Children = { _connect, _takeOver, _newInMatgate, _editInMatgate, _reload } };
+        ToolTip.SetTip(_takeOver, "In die eigene Bibliothek übernehmen");
         EditLayout.ColumnOf(_connectionsTab).Children.AddRange([_libraryState, _connections, libraryActions]);
+        _newInMatgate.Click += (_, _) =>
+        {
+            if (_existing is { } account)
+            {
+                Ui.MainOf(this)?.ShowMatgateConnectionForm(account.Id, null);
+            }
+        };
+        _editInMatgate.Click += (_, _) =>
+        {
+            if (_existing is { } account && _connections.SelectedItem is { } item)
+            {
+                Ui.MainOf(this)?.ShowMatgateConnectionForm(account.Id, item.Id);
+            }
+        };
         _connect.Click += async (_, _) =>
         {
             if (_connections.SelectedItem is { } item)
@@ -380,18 +399,40 @@ public sealed class MatgateForm : UserControl
         _connections.EmptyText = library is null ? "Noch nicht gelesen – „Aktualisieren“ holt die Verbindungen." : "Matgate gibt dir keine Remote-Desktops oder Terminals.";
         _libraryState.Text = library is null
             ? ""
-            : $"Die Remote-Desktops und Terminals, mit denen du in Matgate arbeiten darfst – ohne Passwörter. Zuletzt gelesen {Formats.When(_existing!.LibraryFetched)}.";
+            : $"Die Remote-Desktops und Terminals, mit denen du in Matgate arbeiten darfst – ohne Passwörter. Hat Matgate das Passwort gespeichert oder darfst du nur ansehen, läuft die Sitzung auf Matgate. Zuletzt gelesen {Formats.When(_existing!.LibraryFetched)}.";
         ApplyLibraryButtons();
     }
 
     private void ApplyLibraryButtons()
     {
         var item = _connections.SelectedItem;
-        _connect.IsEnabled = item?.ProtocolKind is not null;
+        var library = _existing is { IsSignedIn: true } signedIn ? MatgateService.Library(signedIn.Id) : null;
+        _connect.IsEnabled = item?.ProtocolKind is not null && !(item.IsWatchOnly && item.ProtocolKind == ConnectionProtocol.Ssh);
         _takeOver.IsEnabled = item is not null && !AccessPolicy.IsConfigurationLocked
             && (_existing is not { } account || MatgateService.TakenOver(account.Id, item.Id) is null);
         _reload.IsEnabled = _existing?.IsSignedIn == true;
+        // What Matgate allows this user: create (own or shared), change ("Bearbeiten"), delete ("Verwalten").
+        _newInMatgate.IsVisible = library?.User.CanCreate == true;
+        _editInMatgate.IsEnabled = item?.CanEdit == true;
+        _editInMatgate.IsVisible = library?.Connections.Any(connection => connection.CanEdit) == true;
     }
+
+    /// <summary>Back from a connection in Matgate: the list as Matgate has it now, and what happened.</summary>
+    public void ShowLibraryMessage(string text, InfoSeverity severity)
+    {
+        _existing = _existing is { } account ? MatgateService.Find(account.Id) : null;
+        ShowLibrary();
+        _layout.Message.Show(text, severity);
+    }
+
+    public static string LevelName(string level) => level switch
+    {
+        "ReadOnly" => "Ansehen",
+        "Connect" => "Verbinden",
+        "Edit" => "Bearbeiten",
+        "Manage" => "Verwalten",
+        _ => level,
+    };
 
     private async Task ConnectAsync(MatgateConnectionItem item)
     {

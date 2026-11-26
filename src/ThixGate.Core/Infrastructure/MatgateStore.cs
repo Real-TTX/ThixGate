@@ -70,5 +70,9 @@ internal static class MatgateStore
     public static MatgateLibrary Parse(string json) =>
         JsonSerializer.Deserialize<MatgateLibrary>(json, SerializerOptions) ?? throw new JsonException("empty library");
 
+    /// <summary>One connection as Matgate answers a create or change.</summary>
+    public static MatgateConnectionItem ParseConnection(string json) =>
+        JsonSerializer.Deserialize<MatgateConnectionItem>(json, SerializerOptions) ?? throw new JsonException("empty connection");
+
     private static string PathOf(Guid accountId) => Path.Combine(AppPaths.MatgateDirectory, accountId.ToString("D") + ".json");
 }

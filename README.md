@@ -21,7 +21,7 @@ verbunden wird über Matgate.
 | **SSH** | Öffnet Windows Terminal bzw. Terminal.app (oder ein eigenes Terminal) mit Benutzer, Port und Schlüsseldatei – das Passwort steht nie auf einer Befehlszeile. |
 | **Zugangsdaten** | Einmal speichern, in vielen Verbindungen verwenden. Passwörter geschützt auf dem Gerät (Windows DPAPI, macOS Schlüsselbund). |
 | **ThixCloud** | Ordner, Verbindungen und Zugangsdaten (ohne Passwörter) auf allen Geräten gleich – Anmeldung im Browser oder mit Passwort. |
-| **Matgate** | Optional: Matgate eintragen und **im Browser anmelden** (Passwort, zweiter Faktor, Single Sign-on wie gewohnt, dann „ThixGate zulassen“). Der Tab „Verbindungen“ zeigt die Remote-Desktops und Terminals, mit denen du dort arbeiten darfst (ohne Passwörter): direkt verbinden oder in die eigene Bibliothek übernehmen. Verbunden wird **über Matgate** (auch durch seine Tunnel), mit ThixGates Engine und den Passwörtern von diesem Computer. |
+| **Matgate** | Optional: Matgate eintragen und **im Browser anmelden** (Passwort, zweiter Faktor, Single Sign-on wie gewohnt, dann „ThixGate zulassen“). Der Tab „Verbindungen“ zeigt die Remote-Desktops und Terminals, mit denen du dort arbeiten darfst (ohne Passwörter): direkt verbinden oder in die eigene Bibliothek übernehmen. Verbunden wird **über Matgate** (auch durch seine Tunnel), mit ThixGates Engine und den Passwörtern von diesem Computer – oder als **Sitzung auf Matgate**, wenn nur Matgate das Passwort kennt oder du nur ansehen darfst: Matgate meldet sich an, das Bild kommt zu ThixGate. Mit den Rechten dazu legst du Verbindungen in Matgate an, änderst und löschst sie (nie mit Passwort). |
 | **Import / Export** | `.rdp`-Dateien und die eigene Bibliothek (`*.thixgate.json`, ohne Passwörter). |
 | **Desktop** | Infobereich / Menüleiste mit Favoriten und zuletzt verwendeten Verbindungen, Autostart, Hell/Dunkel, Updates über das Netz (auf Wunsch vollautomatisch), Setup ohne Administratorrechte (Windows), App-Bundle (macOS). |
 | **Richtlinien** | `LockConfiguration`, `DisableCloud`, `DisableUpdates`, `DisableMatgate`, `DisableSavedPasswords` – Windows `HKLM\SOFTWARE\Policies\ThixGate`, macOS Profil `info.schmoldt.thixgate`. |
@@ -30,7 +30,7 @@ verbunden wird über Matgate.
 |---|---|
 | ![Verbindung](docs/images/main-connection-form-general-light.png) | ![Sitzung](docs/images/session-rdp.png) |
 | ![Zugangsdaten](docs/images/main-credentials-dark.png) | ![Einstellungen](docs/images/main-settings-cloud-light.png) |
-| ![Matgate-Verbindungen](docs/images/main-matgate-connections-light.png) | ![Matgate](docs/images/main-matgate-form-dark.png) |
+| ![Matgate-Verbindungen](docs/images/main-matgate-connections-light.png) | ![Verbindung in Matgate](docs/images/main-matgate-connection-form-dark.png) |
 
 ## Installation
 

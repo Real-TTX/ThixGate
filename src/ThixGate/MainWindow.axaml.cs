@@ -35,6 +35,7 @@ public partial class MainWindow : MatWindow
     private readonly FolderForm _folderForm = new();
     private readonly CredentialForm _credentialForm = new();
     private readonly MatgateForm _matgateForm = new();
+    private readonly MatgateConnectionForm _matgateConnectionForm = new();
     private readonly Stack<(Control Page, MatNavItem? Nav)> _history = new();
     private readonly DispatcherTimer _sizeTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
     private readonly DispatcherTimer _sessionTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -101,6 +102,7 @@ public partial class MainWindow : MatWindow
         _folderForm.Closed = message => Back(message, (text, severity) => _folders.Value.ShowMessage(text, severity));
         _credentialForm.Closed = message => Back(message, (text, severity) => _credentials.Value.ShowMessage(text, severity));
         _matgateForm.Closed = message => Back(message, (text, severity) => _matgate.Value.ShowMessage(text, severity));
+        _matgateConnectionForm.Closed = message => Back(message, _matgateForm.ShowLibraryMessage);
 
         SessionStatus.Click += (_, _) => SessionWindow.OpenSessions.FirstOrDefault()?.Activate();
         _sessionTimer.Tick += (_, _) => RefreshSessions();
@@ -142,6 +144,8 @@ public partial class MainWindow : MatWindow
     public CredentialForm CredentialForm => _credentialForm;
 
     public MatgateForm MatgateForm => _matgateForm;
+
+    public MatgateConnectionForm MatgateConnectionForm => _matgateConnectionForm;
 
     public object? CurrentPage => PageHost.Content;
 
@@ -218,6 +222,13 @@ public partial class MainWindow : MatWindow
     {
         _matgateForm.Load(accountId);
         Push(_matgateForm);
+    }
+
+    /// <summary>A connection IN a Matgate (null: a new one there), opened from the Matgate form's tab "Verbindungen".</summary>
+    public void ShowMatgateConnectionForm(Guid accountId, Guid? matgateConnectionId)
+    {
+        _matgateConnectionForm.Load(accountId, matgateConnectionId);
+        Push(_matgateConnectionForm);
     }
 
     /// <summary>Back to the page a form was opened from (the start page when there is none).</summary>
