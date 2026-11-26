@@ -232,7 +232,7 @@ public partial class App : Application
             }
         }
 
-        Step("sessions", Sessions.SessionWindow.CloseAll);
+        Step("sessions", Sessions.SessionHub.CloseAll);
         Step("cloud sync", CloudSyncService.Stop);
         Step("matgate", () =>
         {

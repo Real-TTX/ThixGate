@@ -5,7 +5,7 @@ using ThixGate.Core.Models;
 namespace ThixGate.Sessions;
 
 /// <summary>
-/// Opens a connection the way its protocol wants: RDP and VNC in a <see cref="SessionWindow"/> (which opens the relay of a connection
+/// Opens a connection the way its protocol wants: RDP and VNC as a session of the <see cref="SessionHub"/> (a tab of the main window or a window of its own; it opens the relay of a connection
 /// "über Matgate" itself), SSH in the terminal (after opening its relay).
 /// </summary>
 public static class SessionLauncher
@@ -27,6 +27,6 @@ public static class SessionLauncher
             return;
         }
 
-        SessionWindow.Show(connection);
+        SessionHub.Open(connection);
     }
 }

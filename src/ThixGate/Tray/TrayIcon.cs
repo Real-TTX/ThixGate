@@ -49,7 +49,7 @@ internal sealed class TrayIcon : IDisposable
     {
         get
         {
-            var open = SessionWindow.OpenSessions.Count;
+            var open = SessionHub.OpenSessions.Count;
             return open > 0
                 ? MatState.Custom(open == 1 ? "1 Sitzung offen" : $"{open} Sitzungen offen", "--mat-accent", MatStateMark.Dot)
                 : MatState.Running;

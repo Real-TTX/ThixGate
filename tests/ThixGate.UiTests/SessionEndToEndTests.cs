@@ -27,6 +27,57 @@ public sealed class SessionEndToEndTests
     [AvaloniaFact]
     public void Vnc_session_draws_the_remote_desktop() => Run(ConnectionProtocol.Vnc, Ports[2], "", "demo-pw1");
 
+    [AvaloniaFact]
+    public void Rdp_session_in_a_tab_of_the_main_window_draws_the_remote_desktop()
+    {
+        if (Host is null)
+        {
+            return; // opt-in
+        }
+
+        using var data = new TestData();
+        SettingsService.Update(settings => settings with { ConfirmCloseSession = false, OpenSessionIn = OpenSessionIn.Tab });
+        var credential = CredentialService.Save(new StoredCredential { Name = "Test", UserName = "demo" }, "demo-only-pw");
+        var connection = LibraryService.SaveConnection(new RemoteConnection { Name = "Testdesktop im Tab", Host = Host, Port = Ports[0], CredentialId = credential.Id });
+        var main = new MainWindow { Width = 1360, Height = 860 };
+        main.ShowFromTray();
+        try
+        {
+            var view = SessionHub.Open(connection);
+            Assert.Same(view, main.ShownSession);
+            var until = DateTime.UtcNow.AddSeconds(40);
+            while (DateTime.UtcNow < until && !(view.IsConnected && view.HasPicture))
+            {
+                Dispatcher.UIThread.RunJobs();
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                Thread.Sleep(50);
+            }
+
+            for (var settle = DateTime.UtcNow.AddSeconds(2); DateTime.UtcNow < settle;)
+            {
+                Dispatcher.UIThread.RunJobs();
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                Thread.Sleep(50);
+            }
+
+            if (Environment.GetEnvironmentVariable("THIXGATE_SCREENSHOTS") is { } shots)
+            {
+                Directory.CreateDirectory(shots);
+                main.CaptureRenderedFrame()?.Save(Path.Combine(shots, "session-tab.png"));
+            }
+
+            Assert.True(view.IsConnected, $"not connected: {view.StateText}");
+            Assert.True(view.HasPicture, $"no picture ({view.LastDrawError})");
+            Assert.Empty(SessionWindow.OpenSessions);
+        }
+        finally
+        {
+            SessionHub.CloseAll();
+            main.IsExiting = true;
+            main.Close();
+        }
+    }
+
     private static void Run(ConnectionProtocol protocol, int port, string user, string password)
     {
         if (Host is null)

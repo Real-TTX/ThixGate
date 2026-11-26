@@ -85,8 +85,9 @@ src/ThixGate            (Avalonia app)
                         CredentialPages (list + form with Verwendung), MatgatePages (list + form: Allgemein | Verbindungen),
                         MatgateConnectionForm (a connection IN Matgate: create/change/delete as Matgate allows), SettingsPage (Allgemein | Sitzungen |
                         ThixCloud | Updates | Erweitert), AboutPage
-  Sessions/             SessionWindow (IScreenHost of Mat.Remote: draws the engine's picture into a WriteableBitmap on demand, pointer,
-                        keys, sign-in dialog), KeyMap (PhysicalKey → scancode for RDP, keysym for VNC), SessionLauncher, NullScreenHost
+  Sessions/             SessionView (IScreenHost of Mat.Remote: draws the engine's picture into a WriteableBitmap on demand, pointer,
+                        keys, sign-in dialog), SessionHub (where a session is: a tab right of the menu (default, like Royal TS) or a
+                        SessionWindow; Abdocken/Andocken moves it without ending it; full screen = a window), KeyMap (PhysicalKey → scancode for RDP, keysym for VNC), SessionLauncher, NullScreenHost
   Controls/             ONE code base per control: LibraryNav (the menu) + ConnectionTree (the library as folders and connections, LibraryService.Tree),
                         ListLayout<T> (THE list page), EditLayout (THE create/update page), ListToolbar,
                         Pager, ActionBar, FormFields, FormErrors, InfoBar, IconLabel, StatePill/EmptyState, DataTable, Formats, Protocols

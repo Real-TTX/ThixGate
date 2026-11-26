@@ -35,7 +35,18 @@
       <GridSplitter Grid.Column="0" x:Name="TreeSplitter" Width="5" HorizontalAlignment="Right" Background="Transparent" ResizeDirection="Columns"
                     ResizeBehavior="CurrentAndNext" Cursor="SizeWestEast"
                     AutomationProperties.Name="Breite des Menüs" />
-      <ContentControl Grid.Column="1" x:Name="PageHost" />
+      <!-- Right of the menu: the tabs of the open sessions above (only while there are some; the first tab is the page) and the page or a session -->
+      <DockPanel Grid.Column="1">
+        <Border DockPanel.Dock="Top" x:Name="TabStrip" IsVisible="False" BorderThickness="0,0,0,1"
+                BorderBrush="{DynamicResource Mat.Border}" Background="{DynamicResource Mat.NavBg}">
+          <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+            <StackPanel x:Name="Tabs" Orientation="Horizontal" Spacing="4" Margin="8,6,8,6" />
+          </ScrollViewer>
+        </Border>
+        <Panel x:Name="Body">
+          <ContentControl x:Name="PageHost" />
+        </Panel>
+      </DockPanel>
     </Grid>
   </Grid>
 </mat:MatWindow>

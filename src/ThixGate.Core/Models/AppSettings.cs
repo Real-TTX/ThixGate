@@ -10,11 +10,14 @@ public enum ThemeChoice
 /// <summary>What a double click on a connection does.</summary>
 public enum OpenSessionIn
 {
-    /// <summary>A window of its own per session.</summary>
-    Window = 0,
+    /// <summary>A tab right of the menu of the main window (like Royal TS).</summary>
+    Tab = 0,
 
-    /// <summary>The window of the session in full screen.</summary>
-    FullScreen = 1,
+    /// <summary>A window of its own per session.</summary>
+    Window = 1,
+
+    /// <summary>A window of its own in full screen.</summary>
+    FullScreen = 2,
 }
 
 /// <summary>The settings of this computer (settings.json). Only <see cref="Business.SettingsService"/> writes them.</summary>
@@ -24,7 +27,7 @@ public sealed record AppSettings
 
     // ---- Sessions ----
 
-    public OpenSessionIn OpenSessionIn { get; init; } = OpenSessionIn.Window;
+    public OpenSessionIn OpenSessionIn { get; init; } = OpenSessionIn.Tab;
 
     /// <summary>Ask before a running session's window is closed.</summary>
     public bool ConfirmCloseSession { get; init; } = true;

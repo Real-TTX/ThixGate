@@ -523,6 +523,92 @@ public sealed class UiTests
         window.Close();
     }
 
+    [AvaloniaFact]
+    public void Sessions_open_as_tabs_right_of_the_menu_undock_into_a_window_and_dock_again()
+    {
+        using var data = new TestData();
+        SampleData.Create();
+        SettingsService.Update(settings => settings with { ConfirmCloseSession = false });
+        var window = Open(1360, 860);
+        var first = LibraryService.SaveConnection(new RemoteConnection { Name = "Nirgendwo", Protocol = ConnectionProtocol.Vnc, Host = "127.0.0.1", Port = 1 });
+        var second = LibraryService.SaveConnection(new RemoteConnection { Name = "Auch nirgendwo", Protocol = ConnectionProtocol.Rdp, Host = "127.0.0.1", Port = 2 });
+        Settle(window);
+        Assert.Null(window.ShownSession);
+        Assert.Single(window.SessionTabs); // only the page: the strip is hidden
+
+        // A double click in the tree: the session opens as a tab right of the menu, not in a window.
+        var tree = window.LibraryTree;
+        var index = tree.Rows.ToList().FindIndex(row => row.Id == first.Id);
+        var container = (ListBoxItem)tree.List.ContainerFromIndex(index)!;
+        var at = container.TranslatePoint(new Point(container.Bounds.Width / 2, container.Bounds.Height / 2), window)!.Value;
+        window.MouseDown(at, MouseButton.Left);
+        window.MouseUp(at, MouseButton.Left);
+        window.MouseDown(at, MouseButton.Left);
+        window.MouseUp(at, MouseButton.Left);
+        Settle(window);
+        var view = Assert.Single(SessionHub.OpenSessions);
+        Assert.Same(view, window.ShownSession);
+        Assert.Empty(SessionWindow.OpenSessions);
+        Assert.Equal(2, window.SessionTabs.Count); // Übersicht + the session
+        for (var until = DateTime.UtcNow.AddSeconds(10); DateTime.UtcNow < until && view.StateText != "Getrennt";)
+        {
+            Settle(window);
+        }
+
+        Assert.Equal("Getrennt", view.StateText); // nothing listens on port 1
+        Save(window, "session-tab-light");
+
+        // Opening it again shows the open one; a second connection is a second tab; "Übersicht" shows the page, the menu too.
+        SessionHub.Open(first);
+        SessionHub.Open(second);
+        Settle(window);
+        Assert.Equal(2, SessionHub.OpenSessions.Count);
+        Assert.Equal(3, window.SessionTabs.Count);
+        window.SessionTabs[0].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Settle(window);
+        Assert.Null(window.ShownSession);
+        window.SessionTabs[1].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Settle(window);
+        Assert.Same(view, window.ShownSession);
+        window.ShowCredentials();
+        Settle(window);
+        Assert.Null(window.ShownSession);
+
+        // "Abdocken": into a window of its own, the session goes on; "Andocken": back as a tab.
+        view.DockButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Settle(window);
+        var own = Assert.Single(SessionWindow.OpenSessions);
+        Assert.Same(view, own.View);
+        Assert.Equal(2, window.SessionTabs.Count);
+        Assert.Equal(2, SessionHub.OpenSessions.Count);
+        view.DockButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Settle(window);
+        Assert.Empty(SessionWindow.OpenSessions);
+        Assert.Same(view, window.ShownSession);
+        Assert.Equal(3, window.SessionTabs.Count);
+
+        // Closing the tabs ends the sessions; the strip goes away with the last one.
+        foreach (var each in SessionHub.OpenSessions.ToList())
+        {
+            SessionHub.CloseAsync(each).GetAwaiter().GetResult();
+        }
+
+        Settle(window);
+        Assert.Empty(SessionHub.OpenSessions);
+        Assert.Single(window.SessionTabs);
+        Assert.Null(window.ShownSession);
+
+        // "Im eigenen Fenster" in the settings: a window of its own as before.
+        SettingsService.Update(settings => settings with { OpenSessionIn = OpenSessionIn.Window });
+        SessionHub.Open(first);
+        Settle(window);
+        Assert.Single(SessionWindow.OpenSessions);
+        SessionHub.CloseAll();
+        Settle(window);
+        Assert.Empty(SessionHub.OpenSessions);
+        window.Close();
+    }
+
     private static RawInputModifiers CommandModifier => OperatingSystem.IsMacOS() ? RawInputModifiers.Meta : RawInputModifiers.Control;
 
     private static MainWindow Open(double width = 1360, double height = 860)

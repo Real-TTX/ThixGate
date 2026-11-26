@@ -44,6 +44,9 @@ public partial class MainWindow : MatWindow
     private readonly MatNavItem _navCredentials;
     private readonly MatNavItem _navMatgate;
     private readonly MatNavItem _navSettings;
+    private readonly Dictionary<SessionView, Button> _sessionTabs = [];
+    private readonly Button _pageTab;
+    private SessionView? _shownSession;
 
     public MainWindow()
     {
@@ -118,7 +121,24 @@ public partial class MainWindow : MatWindow
             }
         });
 
-        SessionStatus.Click += (_, _) => SessionWindow.OpenSessions.FirstOrDefault()?.Activate();
+        SessionStatus.Click += (_, _) =>
+        {
+            if (SessionHub.OpenSessions.FirstOrDefault() is { } first)
+            {
+                SessionHub.Show(first);
+            }
+        };
+        _pageTab = PageTab();
+        Tabs.Children.Add(_pageTab);
+        SessionHub.Main = this;
+        SessionHub.Changed += (_, _) => Ui.Post(RefreshSessions);
+        Closed += (_, _) =>
+        {
+            if (SessionHub.Main == this)
+            {
+                SessionHub.Main = null;
+            }
+        };
         _sessionTimer.Tick += (_, _) => RefreshSessions();
         _sessionTimer.Start();
 
@@ -276,6 +296,7 @@ public partial class MainWindow : MatWindow
         var (page, nav) = _history.Pop();
         Sidebar.Select(nav);
         PageHost.Content = page;
+        ShowPage();
     }
 
     private void Back(string? message, Action<string, InfoSeverity> show)
@@ -292,6 +313,7 @@ public partial class MainWindow : MatWindow
         _history.Clear();
         Sidebar.Select(nav);
         PageHost.Content = page;
+        ShowPage();
     }
 
     private void Push(Control page)
@@ -302,6 +324,167 @@ public partial class MainWindow : MatWindow
         }
 
         PageHost.Content = page;
+        ShowPage();
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------- session tabs
+
+    /// <summary>The session shown now (its tab is the chosen one), or null: the page.</summary>
+    public SessionView? ShownSession => _shownSession;
+
+    /// <summary>The tabs above the page: the page first, then one per docked session (tests).</summary>
+    public IReadOnlyList<Button> SessionTabs => [.. Tabs.Children.OfType<Button>()];
+
+    /// <summary>A session comes as a tab right of the menu (<see cref="SessionHub"/>) and is shown.</summary>
+    public void AddSessionTab(SessionView view)
+    {
+        if (_sessionTabs.ContainsKey(view))
+        {
+            ShowSession(view);
+            return;
+        }
+
+        view.IsVisible = false;
+        Body.Children.Add(view);
+        var tab = SessionTab(view);
+        _sessionTabs[view] = tab;
+        Tabs.Children.Add(tab);
+        view.StateChanged += OnSessionStateChanged;
+        ShowSession(view);
+    }
+
+    /// <summary>A session leaves its tab (closed, or into a window of its own).</summary>
+    public void RemoveSessionTab(SessionView view)
+    {
+        if (!_sessionTabs.Remove(view, out var tab))
+        {
+            return;
+        }
+
+        view.StateChanged -= OnSessionStateChanged;
+        Tabs.Children.Remove(tab);
+        Body.Children.Remove(view);
+        if (_shownSession == view)
+        {
+            ShowPage();
+        }
+        else
+        {
+            RefreshTabs();
+        }
+    }
+
+    /// <summary>Shows a docked session (its tab chosen); the keyboard goes into it.</summary>
+    public void ShowSession(SessionView view)
+    {
+        if (!_sessionTabs.ContainsKey(view))
+        {
+            return;
+        }
+
+        _shownSession = view;
+        PageHost.IsVisible = false;
+        foreach (var each in _sessionTabs.Keys)
+        {
+            each.IsVisible = each == view;
+        }
+
+        RefreshTabs();
+        Dispatcher.UIThread.Post(view.FocusScreen);
+    }
+
+    /// <summary>Shows the page again (the first tab); the sessions go on behind it.</summary>
+    public void ShowPage()
+    {
+        _shownSession = null;
+        PageHost.IsVisible = true;
+        foreach (var each in _sessionTabs.Keys)
+        {
+            each.IsVisible = false;
+        }
+
+        RefreshTabs();
+    }
+
+    private void OnSessionStateChanged(object? sender, EventArgs e) => Ui.Post(RefreshTabs);
+
+    /// <summary>The strip shows only while sessions are docked; the chosen tab carries the tint of the accent.</summary>
+    private void RefreshTabs()
+    {
+        TabStrip.IsVisible = _sessionTabs.Count > 0;
+        Mark(_pageTab, _shownSession is null);
+        foreach (var (view, tab) in _sessionTabs)
+        {
+            Mark(tab, view == _shownSession);
+            if (tab.Tag is Ellipse dot)
+            {
+                dot.Use(Shape.FillProperty, view.IsConnected ? "Mat.Success" : "Mat.TextFaint");
+            }
+
+            ToolTip.SetTip(tab, $"{view.Connection.Name} – {view.StateText}");
+        }
+
+        static void Mark(Button tab, bool chosen)
+        {
+            if (chosen)
+            {
+                tab.Use(BackgroundProperty, "Mat.AccentSoft");
+            }
+            else
+            {
+                tab.ClearValue(BackgroundProperty);
+            }
+
+            tab.FontWeight = chosen ? FontWeight.SemiBold : FontWeight.Normal;
+        }
+    }
+
+    /// <summary>The tab of the page: what the menu shows.</summary>
+    private Button PageTab()
+    {
+        var tab = new Button { Padding = new Thickness(10, 6), Content = new IconLabel { Icon = "home", Text = "Übersicht" } }.Themed("MatButton.Ghost");
+        AutomationProperties.SetName(tab, "Übersicht");
+        tab.Click += (_, _) => ShowPage();
+        return tab;
+    }
+
+    /// <summary>A tab of a session: protocol, name, a dot for connected, the X that closes it (also the middle mouse button).</summary>
+    private Button SessionTab(SessionView view)
+    {
+        var dot = new Ellipse { Width = 7, Height = 7, VerticalAlignment = VerticalAlignment.Center };
+        var close = new Button { Padding = new Thickness(3), Content = new MatIcon { Icon = "x", Size = 12 } }.Themed("MatButton.Icon");
+        AutomationProperties.SetName(close, $"{view.Connection.Name} schließen");
+        ToolTip.SetTip(close, "Sitzung schließen");
+        close.Click += async (_, e) =>
+        {
+            e.Handled = true;
+            await SessionHub.CloseAsync(view);
+        };
+
+        var content = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            Children =
+            {
+                new MatIcon { Icon = Protocols.Of(view.Connection.Protocol).Icon, Size = 16, VerticalAlignment = VerticalAlignment.Center },
+                new TextBlock { Text = view.Connection.Name, MaxWidth = 200, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center },
+                dot,
+                close,
+            },
+        };
+        var tab = new Button { Padding = new Thickness(10, 4, 4, 4), Content = content, Tag = dot }.Themed("MatButton.Ghost");
+        AutomationProperties.SetName(tab, view.Connection.Name);
+        tab.Click += (_, _) => ShowSession(view);
+        tab.PointerReleased += async (_, e) =>
+        {
+            if (e.InitialPressMouseButton == MouseButton.Middle)
+            {
+                e.Handled = true;
+                await SessionHub.CloseAsync(view);
+            }
+        };
+        return tab;
     }
 
     protected override void OnClosing(WindowClosingEventArgs e)
@@ -318,6 +501,12 @@ public partial class MainWindow : MatWindow
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
+        // A session shown in its tab gets every key (Ctrl+1, Esc … belong to the remote computer then).
+        if (_shownSession is { } session && session.IsKeyboardFocusWithin)
+        {
+            return;
+        }
+
         var withCommand = e.KeyModifiers.HasFlag(Ui.CommandKey.Modifier);
         switch (e.Key)
         {
@@ -383,7 +572,7 @@ public partial class MainWindow : MatWindow
     /// <summary>The open sessions in the middle of the title bar ("2 Sitzungen offen").</summary>
     private void RefreshSessions()
     {
-        var open = SessionWindow.OpenSessions;
+        var open = SessionHub.OpenSessions;
         SessionStatus.IsVisible = open.Count > 0;
         if (open.Count == 0)
         {
@@ -391,7 +580,7 @@ public partial class MainWindow : MatWindow
         }
 
         SessionText.Text = open.Count == 1 ? $"{open[0].Connection.Name} · {open[0].StateText}" : $"{open.Count} Sitzungen offen";
-        ToolTip.SetTip(SessionStatus, string.Join("\n", open.Select(window => $"{window.Connection.Name} – {window.StateText}")));
+        ToolTip.SetTip(SessionStatus, string.Join("\n", open.Select(view => $"{view.Connection.Name} – {view.StateText}")));
     }
 
     /// <summary>The cloud state at the foot of the menu (above the version); a waiting update is MatNav's own link.</summary>
