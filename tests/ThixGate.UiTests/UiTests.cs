@@ -536,15 +536,13 @@ public sealed class UiTests
         Assert.Null(window.ShownSession);
         Assert.Single(window.SessionTabs); // only the page: the strip is hidden
 
-        // A double click in the tree: the session opens as a tab right of the menu, not in a window.
+        // Enter (or a double click) in the tree: the session opens as a tab right of the menu, not in a window. (Enter: the headless double
+        // click is not one on macOS.)
         var tree = window.LibraryTree;
-        var index = tree.Rows.ToList().FindIndex(row => row.Id == first.Id);
-        var container = (ListBoxItem)tree.List.ContainerFromIndex(index)!;
-        var at = container.TranslatePoint(new Point(container.Bounds.Width / 2, container.Bounds.Height / 2), window)!.Value;
-        window.MouseDown(at, MouseButton.Left);
-        window.MouseUp(at, MouseButton.Left);
-        window.MouseDown(at, MouseButton.Left);
-        window.MouseUp(at, MouseButton.Left);
+        tree.List.SelectedIndex = tree.Rows.ToList().FindIndex(row => row.Id == first.Id);
+        Settle(window);
+        (tree.List.ContainerFromIndex(tree.List.SelectedIndex) as ListBoxItem)!.Focus();
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
         Settle(window);
         var view = Assert.Single(SessionHub.OpenSessions);
         Assert.Same(view, window.ShownSession);
