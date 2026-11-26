@@ -173,6 +173,16 @@ public static class TransferService
             resolution = $"{w}x{h}";
         }
 
+        // "use multimon:i:1": over every monitor (mstsc's own numbering of "selectedmonitors" means nothing on another computer).
+        var monitors = values.GetValueOrDefault("use multimon") == "1" ? "all" : "";
+
+        // "drivestoredirect:s:*" every drive, or "C:\;D:\;DynamicDrives" - the drives and folders named (those to come are left out).
+        var drives = (values.GetValueOrDefault("drivestoredirect") ?? "").Trim();
+        drives = drives == "*"
+            ? "*"
+            : string.Join("\n", drives.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(drive => !drive.Equals("DynamicDrives", StringComparison.OrdinalIgnoreCase) && !drive.Equals("DynamicDevices", StringComparison.OrdinalIgnoreCase)));
+
         LibraryService.SaveConnection(new RemoteConnection
         {
             Name = Path.GetFileNameWithoutExtension(path),
@@ -182,6 +192,8 @@ public static class TransferService
             UserName = user,
             Domain = domain,
             Resolution = resolution,
+            Monitors = monitors,
+            Drives = drives,
         });
         return new ImportResult(0, 1, 0, 0);
     }

@@ -43,6 +43,15 @@
               <mat:MatSettingRow Title="Vor dem Schließen fragen" Description="Fragt, bevor das Fenster einer verbundenen Sitzung geschlossen wird.">
                 <ToggleSwitch x:Name="ConfirmCloseSwitch" OnContent="" OffContent="" AutomationProperties.Name="Vor dem Schließen fragen" />
               </mat:MatSettingRow>
+              <mat:MatSettingRow Title="Monitore für Remote Desktop" Description="Ein Monitor: die Sitzung im Tab oder Fenster. Alle Monitore: im Vollbild über alle Monitore dieses Computers. Eine Verbindung kann es unter „Anzeige“ anders sagen.">
+                <ComboBox x:Name="MonitorsChoice" MinWidth="220" AutomationProperties.Name="Monitore für Remote Desktop">
+                  <ComboBoxItem Content="Ein Monitor" />
+                  <ComboBoxItem Content="Alle Monitore" />
+                </ComboBox>
+              </mat:MatSettingRow>
+              <mat:MatSettingRow Title="Status der Verbindung zeigen" Description="Latenz, Bilder pro Sekunde und Datenrate über dem Remote-Desktop; ein Klick zeigt die letzte Minute als Graph.">
+                <ToggleSwitch x:Name="StatusSwitch" OnContent="" OffContent="" AutomationProperties.Name="Status der Verbindung zeigen" />
+              </mat:MatSettingRow>
               <mat:MatSettingRow Title="SSH im Terminal des Systems" Description="Aus: SSH öffnet im Terminal von ThixGate (als Tab oder Fenster wie oben). An: im Terminal des Systems mit OpenSSH.">
                 <ToggleSwitch x:Name="SshSystemSwitch" OnContent="" OffContent="" AutomationProperties.Name="SSH im Terminal des Systems" />
               </mat:MatSettingRow>

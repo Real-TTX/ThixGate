@@ -31,7 +31,9 @@ the app follows MatDesign's rules DESK, TRAY, SETUP.
   - `SessionEndToEndTests` (opt-in): real sessions against Matgate's test desktop (`external/Matgate/tests/desktop`: xrdp 3389, FreeRDP
     shadow with NLA 3390, TigerVNC 5901). `docker build -t thixgate-e2e-desktop external/Matgate/tests/desktop`,
     `docker run -d -p 13389:3389 -p 13390:3390 -p 15901:5901 thixgate-e2e-desktop`, then `THIXGATE_E2E_DESKTOP=127.0.0.1`,
-    `THIXGATE_E2E_PORTS=13389,13390,15901`.
+    `THIXGATE_E2E_PORTS=13389,13390,15901`. `SessionLocalEndToEndTests` types into the xterm of the session (US layout): the clipboard
+    both ways (xclip), the status, the full-screen bar; the drive only with `THIXGATE_E2E_DRIVE=1` (xrdp must mount it with FUSE: run
+    the container with `--device /dev/fuse --cap-add SYS_ADMIN`; in Docker Desktop xrdp sees the drive but does not mount it).
   - SSH (opt-in, `TerminalTests` and `SessionEndToEndTests`): `docker run -d -p 12222:2222 -e USER_NAME=demo -e USER_PASSWORD=demo-only-pw
     -e PASSWORD_ACCESS=true lscr.io/linuxserver/openssh-server` (Matgate's test SSH server), then `THIXGATE_E2E_SSH=127.0.0.1:12222`.
   - Files and databases (opt-in, `FilesDatabasesWebTests` and `UiTests.Panels`): `THIXGATE_E2E_FILES=1`, `THIXGATE_E2E_DB=1` against
@@ -66,7 +68,8 @@ the app follows MatDesign's rules DESK, TRAY, SETUP.
 ## Map
 
 ```
-external/Matgate        submodule: Matgate; ThixGate uses only Mat.Remote/ (RDP, VNC, sound, clipboard, H.264; Files/ RemoteFiles + FileOperations
+external/Matgate        submodule: Matgate; ThixGate uses only Mat.Remote/ (RDP, VNC, sound, clipboard, H.264; ScreenLocal: monitors, drives,
+                        files by path, IScreenMeter + TcpRoundTrip; Files/ RemoteFiles + FileOperations
                         for SFTP/FTP/SMB/WebDAV; Database/ DatabaseGateway for SQL Server/MySQL/PostgreSQL – no ASP.NET)
 src/ThixGate.Core       (no UI) models, business layer (static classes), infrastructure
   MatCloud/             COPY of MatCloud's contract 1.8.0 (CloudApps.Gate, general sync, sign-in, CloudHandoff)
@@ -79,7 +82,9 @@ src/ThixGate.Core       (no UI) models, business layer (static classes), infrast
                         Changed; Tree: the rows of the tree of the menu - own folders and connections, then every signed-in
                         Matgate with the folders and connections of its library copy, nothing taken over), CredentialService (the vault: passwords via TokenStore, never synced), SessionTargets (connection →
                         Mat.Remote ScreenTarget; BackendAsync: engine or MatgateScreen), SshSession (SSH.NET: sign-in with password / key file / keyboard-interactive, host keys via SshHostKeys + known_hosts.json, shell
-                        "xterm-256color", through the relay "über Matgate"), FileSession (RemoteFiles + FileOperations with ThixGate's login, über
+                        "xterm-256color", through the relay "über Matgate"), SessionDisplay (RDP: the monitors of this computer
+                        - "one", "all", "1,3" or the settings' default - and its folders as drives; never for VNC or a session on Matgate),
+                        FileSession (RemoteFiles + FileOperations with ThixGate's login, über
                         Matgate through the relay: DialHost/DialPort), DatabaseSession (DatabaseGateway with ThixGate's login), QueryHistory
                         (query-history.json), WebSites (data folder per connection, Basic / Proxmox sign-in) + WebRelayProxy (127.0.0.1
                         proxy: the site through the relay, the rest direct), SshLauncher (the system terminal when the settings say so, no password on a command line), TransferService
@@ -110,8 +115,10 @@ src/ThixGate            (Avalonia app)
                         DesignDocument; ResultGrids = Avalonia's DataGrid), WebPanel (IBrowser: WebView2Browser on Windows - package
                         Microsoft.Web.WebView2, core only, BuiltInComInteropSupport; WebKitBrowser on macOS through the Objective-C runtime);
                         SessionView (IScreenHost of Mat.Remote and ISshHost: draws the engine's picture into a WriteableBitmap on demand, pointer,
-                        keys, sign-in dialog), SessionHub (where a session is: a tab right of the menu (default, like Royal TS) or a
-                        SessionWindow; Abdocken/Andocken moves it without ending it; full screen = a window), KeyMap (PhysicalKey → scancode for RDP, keysym for VNC), SessionLauncher, NullScreenHost
+                        keys - numbers as doubles, EngineJson -, sign-in dialog; partial: .Clipboard both ways with text, pictures and files,
+                        .Status latency / frames / data rate + StatusGraph, .FullScreen the bar at the top edge), SessionHub (where a session is: a tab right of the menu (default, like Royal TS) or a
+                        SessionWindow; Abdocken/Andocken moves it without ending it; full screen = a window; over several monitors = a
+                        frameless window spanning them, SessionWindow.Span), KeyMap (PhysicalKey → scancode for RDP, keysym for VNC), SessionLauncher, NullScreenHost
   Controls/             ONE code base per control: LibraryNav (the menu) + ConnectionTree (the library as folders and connections, LibraryService.Tree),
                         ListLayout<T> (THE list page), EditLayout (THE create/update page), ListToolbar,
                         Pager, ActionBar, FormFields, FormErrors, InfoBar, IconLabel, StatePill/EmptyState, DataTable, Formats, Protocols

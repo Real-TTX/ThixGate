@@ -64,6 +64,14 @@ public sealed class ConnectionForm : UserControl
     private readonly TabItem _displayTab;
     private readonly Control _keyboardRow;
     private readonly Control _certificateRow;
+    private readonly ComboBox _monitorMode = new() { MinWidth = 320, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left, ItemsSource = new[] { "Wie in den Einstellungen", "Ein Monitor (das Fenster)", "Alle Monitore", "Ausgewählte Monitore" } };
+    private readonly StackPanel _monitorChoices = new() { Spacing = 6, Margin = new Avalonia.Thickness(0, 8, 0, 0) };
+    private readonly Control _monitorRow;
+    private readonly ComboBox _driveMode = new() { MinWidth = 320, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left, ItemsSource = new[] { "Keine", "Alle Laufwerke dieses Computers", "Bestimmte Ordner" } };
+    private readonly TextBox _driveFolders = new() { AcceptsReturn = true, MinHeight = 80, MaxWidth = 640, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left, MinWidth = 520, Watermark = "Ein Ordner je Zeile", Margin = new Avalonia.Thickness(0, 8, 0, 0) };
+    private readonly Button _addFolder = Ui.Button("folder-open", "Ordner hinzufügen …");
+    private readonly Control _driveRow;
+    private readonly List<CheckBox> _monitorChecks = [];
     private IReadOnlyList<RemoteFolder> _folders = [];
     private IReadOnlyList<StoredCredential> _credentials = [];
     private IReadOnlyList<MatgateAccount> _accounts = [];
@@ -104,6 +112,17 @@ public sealed class ConnectionForm : UserControl
         _generalCertificate.IsCheckedChanged += (_, _) => _ignoreCertificate.IsChecked = _generalCertificate.IsChecked;
         _ignoreCertificate.IsCheckedChanged += (_, _) => _generalCertificate.IsChecked = _ignoreCertificate.IsChecked;
         _certificateRow = FormFields.SwitchRow("Zertifikat nicht prüfen", "Die meisten Server haben ein selbst ausgestelltes Zertifikat.", _ignoreCertificate, isLast: true);
+        AutomationProperties.SetName(_monitorMode, "Monitore");
+        AutomationProperties.SetName(_driveMode, "Laufwerke");
+        AutomationProperties.SetName(_driveFolders, "Freigegebene Ordner");
+        _monitorMode.SelectionChanged += (_, _) => _monitorChoices.IsVisible = _monitorMode.SelectedIndex == 3;
+        _driveMode.SelectionChanged += (_, _) => _driveFolders.IsVisible = _addFolder.IsVisible = _driveMode.SelectedIndex == 2;
+        _addFolder.Click += async (_, _) => await AddFolderAsync();
+        _monitorRow = fields.Add(nameof(RemoteConnection.Monitors), "Monitore", new StackPanel { Children = { _monitorMode, _monitorChoices } },
+            "Mehrere Monitore: die Sitzung im Vollbild über alle gewählten; ein gewählter Monitor allein: Vollbild auf ihm. Nicht bei einer Sitzung auf Matgate.", _displayTab);
+        _driveRow = fields.Add(nameof(RemoteConnection.Drives), "Laufwerke",
+            new StackPanel { Children = { _driveMode, _driveFolders, new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Margin = new Avalonia.Thickness(0, 8, 0, 0), Children = { _addFolder } } } },
+            "Ordner dieses Computers erscheinen im Explorer des Remote-PCs („… auf " + ThixGate.Core.Infrastructure.AppInfo.MachineName + "“); ein Ordner, den es auf einem anderen Computer nicht gibt, fehlt dort. Nicht bei einer Sitzung auf Matgate.", _displayTab);
 
         EditLayout.ColumnOf(general).Children.AddRange(
         [
@@ -131,6 +150,8 @@ public sealed class ConnectionForm : UserControl
         [
             fields.Add(nameof(RemoteConnection.Quality), "Bildqualität", _quality, "Die Stufen der Engine von Matgate.", _displayTab),
             fields.Add(nameof(RemoteConnection.Resolution), "Auflösung", _resolution, "auto: folgt dem Fenster · native: wie der Server sie hat · oder feste Größe", _displayTab),
+            _monitorRow,
+            _driveRow,
             _keyboardRow,
             _certificateRow,
         ]);
@@ -238,6 +259,9 @@ public sealed class ConnectionForm : UserControl
         _quality.SelectedIndex = (int)connection.Quality;
         _resolution.Text = connection.Resolution;
         _keyboard.SelectedIndex = Math.Max(0, KeyboardLayouts.ToList().FindIndex(layout => layout.Id == connection.KeyboardLayout));
+        LoadMonitors(connection.Monitors);
+        _driveMode.SelectedIndex = connection.Drives.Trim() == "*" ? 1 : connection.Drives.Trim().Length > 0 ? 2 : 0;
+        _driveFolders.Text = connection.Drives.Trim() == "*" ? "" : connection.Drives;
         _ignoreCertificate.IsChecked = connection.IgnoreCertificate;
         _generalCertificate.IsChecked = connection.IgnoreCertificate;
         _via.SelectedIndex = connection.Via == ConnectVia.Matgate && connection.MatgateAccountId is { } account
@@ -335,7 +359,7 @@ public sealed class ConnectionForm : UserControl
         _domainField.IsVisible = protocol.HasDomain() && !usesCredential;
         _keyField.IsVisible = protocol.HasKeyFile();
         _displayTab.IsVisible = kind == ConnectionKind.Screen;
-        _keyboardRow.IsVisible = _certificateRow.IsVisible = protocol == ConnectionProtocol.Rdp;
+        _keyboardRow.IsVisible = _certificateRow.IsVisible = _monitorRow.IsVisible = _driveRow.IsVisible = protocol == ConnectionProtocol.Rdp;
         _addressRow.IsVisible = kind != ConnectionKind.Web;
         _urlField.IsVisible = kind == ConnectionKind.Web;
         _rootField.IsVisible = kind == ConnectionKind.Files;
@@ -383,6 +407,8 @@ public sealed class ConnectionForm : UserControl
             Resolution = _resolution.Text ?? "auto",
             KeyboardLayout = KeyboardLayouts[Math.Max(0, _keyboard.SelectedIndex)].Id,
             IgnoreCertificate = _ignoreCertificate.IsChecked == true,
+            Monitors = MonitorSetting(),
+            Drives = _driveMode.SelectedIndex switch { 1 => "*", 2 => _driveFolders.Text ?? "", _ => "" },
             Via = viaIndex > 0 ? ConnectVia.Matgate : ConnectVia.Direct,
             MatgateAccountId = viaIndex > 0 && viaIndex <= _accounts.Count ? _accounts[viaIndex - 1].Id : null,
             MatgateConnectionId = viaIndex > 0
@@ -392,6 +418,59 @@ public sealed class ConnectionForm : UserControl
             Notes = _notes.Text ?? "",
             Tags = _tags.Text ?? "",
         };
+    }
+
+    /// <summary>The monitors of this computer as check boxes ("1: 2560 × 1440, Hauptmonitor"), the chosen ones ticked.</summary>
+    private void LoadMonitors(string setting)
+    {
+        var chosen = SessionDisplay.Chosen(setting);
+        var available = SessionDisplay.Ordered(SessionHub.AvailableMonitors());
+        _monitorChecks.Clear();
+        _monitorChoices.Children.Clear();
+        var count = Math.Max(available.Count, chosen.Count == 0 ? 0 : chosen.Max());
+        for (var number = 1; number <= count; number++)
+        {
+            var text = number <= available.Count
+                ? $"Monitor {number}: {available[number - 1].Width} × {available[number - 1].Height}{(available[number - 1].Primary ? ", Hauptmonitor" : "")}"
+                : $"Monitor {number} (hier nicht angeschlossen)";
+            var check = new CheckBox { Content = text, IsChecked = chosen.Contains(number) };
+            AutomationProperties.SetName(check, $"Monitor {number}");
+            _monitorChecks.Add(check);
+            _monitorChoices.Children.Add(check);
+        }
+
+        _monitorMode.SelectedIndex = setting switch
+        {
+            "" => 0,
+            "one" => 1,
+            "all" => 2,
+            _ => 3,
+        };
+        _monitorChoices.IsVisible = _monitorMode.SelectedIndex == 3;
+    }
+
+    private string MonitorSetting() => _monitorMode.SelectedIndex switch
+    {
+        1 => "one",
+        2 => "all",
+        3 => string.Join(",", _monitorChecks.Select((check, index) => (check, number: index + 1)).Where(item => item.check.IsChecked == true).Select(item => item.number)),
+        _ => "",
+    };
+
+    private async Task AddFolderAsync()
+    {
+        if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
+        {
+            return;
+        }
+
+        var folders = await storage.OpenFolderPickerAsync(new Avalonia.Platform.Storage.FolderPickerOpenOptions { Title = "Ordner für die Sitzung", AllowMultiple = true });
+        var paths = folders.Select(folder => folder.TryGetLocalPath()).OfType<string>().ToList();
+        if (paths.Count > 0)
+        {
+            var current = (_driveFolders.Text ?? "").TrimEnd();
+            _driveFolders.Text = string.Join("\n", new[] { current }.Where(text => text.Length > 0).Concat(paths));
+        }
     }
 
     private RemoteConnection? TrySave()

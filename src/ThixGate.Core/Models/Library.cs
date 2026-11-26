@@ -176,6 +176,15 @@ public sealed record RemoteConnection
     /// <summary>RDP: Windows keyboard layout id (0x407 German, 0x409 US).</summary>
     public uint KeyboardLayout { get; init; } = 0x407;
 
+    /// <summary>
+    /// RDP: the monitors the desktop spans - "" as the settings say (<see cref="AppSettings.Monitors"/>), "one" (the window or the screen it
+    /// is on), "all", or the chosen ones ("1,3": numbered left to right, top to bottom; see <see cref="Business.SessionDisplay"/>).
+    /// </summary>
+    public string Monitors { get; init; } = "";
+
+    /// <summary>RDP: folders of this computer as drives of the remote desktop - "" none, "*" every drive of the computer, or folders, one a line.</summary>
+    public string Drives { get; init; } = "";
+
     // ---- SSH ----
 
     /// <summary>SSH, SFTP: a private key file instead of a password (the password is then its passphrase).</summary>

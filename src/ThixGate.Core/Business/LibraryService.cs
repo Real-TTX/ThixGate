@@ -358,6 +358,9 @@ public static partial class LibraryService
             RootPath = kind == ConnectionKind.Files ? normalized.RootPath : "",
             Database = kind == ConnectionKind.Database ? normalized.Database : "",
             Url = kind == ConnectionKind.Web ? WebAddress(normalized.Url) : "",
+            // Monitors and drives are Remote Desktop's: "one", "all", "1,3" or "" (the settings); "*" or folders one a line.
+            Monitors = protocol == ConnectionProtocol.Rdp ? NormalizeMonitors(normalized.Monitors) : "",
+            Drives = protocol == ConnectionProtocol.Rdp ? NormalizeDrives(normalized.Drives) : "",
         };
 
         // A website: its address decides host and port.
@@ -374,6 +377,21 @@ public static partial class LibraryService
 
         return normalized.Via == ConnectVia.Direct ? normalized with { MatgateAccountId = null, MatgateConnectionId = null } : normalized;
     }
+
+    private static string NormalizeMonitors(string monitors)
+    {
+        var setting = monitors.Trim().ToLowerInvariant();
+        if (setting is "" or "one" or "all")
+        {
+            return setting;
+        }
+
+        var chosen = SessionDisplay.Chosen(setting);
+        return chosen.Count == 0 ? "" : string.Join(",", chosen);
+    }
+
+    private static string NormalizeDrives(string drives) =>
+        drives.Trim() == "*" ? "*" : string.Join("\n", SessionDisplay.Folders(drives.Replace("\r", "")));
 
     private static void Validate(RemoteConnection connection, LibraryData data)
     {

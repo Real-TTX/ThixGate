@@ -18,6 +18,30 @@ public static class MatgateRelay
     private static readonly TimeSpan Idle = TimeSpan.FromMinutes(1);
     private static readonly List<Forwarder> Forwarders = [];
 
+    // The TCP connection under each WebSocket to Matgate, for its round trip.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<WebSocket, Socket> Sockets = [];
+
+    /// <summary>The round trip to Matgate of a WebSocket opened here (the session on Matgate), as the TCP stack measures it.</summary>
+    internal static TimeSpan? RoundTripOf(WebSocket? webSocket) =>
+        webSocket is not null && Sockets.TryGetValue(webSocket, out var socket) ? Matgate.Display.TcpRoundTrip.Of(socket) : null;
+
+    /// <summary>
+    /// The round trip to Matgate of a connection's open relay (the engine itself only sees 127.0.0.1); null when none is open. The way on
+    /// from Matgate to the host is not in it.
+    /// </summary>
+    public static TimeSpan? RoundTripFor(RemoteConnection connection)
+    {
+        if (connection.MatgateConnectionId is not { } id)
+        {
+            return null;
+        }
+
+        lock (Forwarders)
+        {
+            return Forwarders.Where(forwarder => forwarder.Leads(id)).Select(forwarder => forwarder.RoundTrip).LastOrDefault(roundTrip => roundTrip is not null);
+        }
+    }
+
     /// <summary>Tests connect the WebSocket themselves (uri, token).</summary>
     internal static Func<Uri, string, CancellationToken, Task<WebSocket>>? ConnectForTests { get; set; }
 
@@ -103,11 +127,37 @@ public static class MatgateRelay
         socket.Options.SetRequestHeader("User-Agent", CloudClient.UserAgent);
         socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
         socket.Options.CollectHttpResponseDetails = true;
+
+        // Its own TCP connection, kept to read the round trip to Matgate from (the status of a session über Matgate).
+        Socket? tcp = null;
+        var handler = new SocketsHttpHandler
+        {
+            ConnectCallback = async (context, connecting) =>
+            {
+                var connection = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                try
+                {
+                    await connection.ConnectAsync(context.DnsEndPoint, connecting);
+                    tcp = connection;
+                    return new NetworkStream(connection, ownsSocket: true);
+                }
+                catch
+                {
+                    connection.Dispose();
+                    throw;
+                }
+            },
+        };
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(30));
-            await socket.ConnectAsync(uri, timeout.Token);
+            await socket.ConnectAsync(uri, new HttpMessageInvoker(handler), timeout.Token);
+            if (tcp is not null)
+            {
+                Sockets.AddOrUpdate(socket, tcp);
+            }
+
             return socket;
         }
         catch (Exception exception) when (exception is WebSocketException or HttpRequestException or OperationCanceledException)
@@ -220,7 +270,13 @@ public static class MatgateRelay
         private int _active;
         private DateTimeOffset _lastActivity = DateTimeOffset.UtcNow;
 
+        private WebSocket? _latest = first;
+
         public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
+
+        public TimeSpan? RoundTrip => RoundTripOf(Volatile.Read(ref _latest));
+
+        public bool Leads(Guid connectionId) => uri.AbsolutePath.EndsWith("/" + connectionId.ToString("D"), StringComparison.OrdinalIgnoreCase);
 
         public void Start()
         {
@@ -272,6 +328,7 @@ public static class MatgateRelay
                 {
                     client.NoDelay = true;
                     using var socket = Interlocked.Exchange(ref _first, null) ?? await ConnectAsync(uri, token, account, _stop.Token);
+                    Volatile.Write(ref _latest, socket);
                     await PumpAsync(socket, client.GetStream(), _stop.Token);
                 }
             }

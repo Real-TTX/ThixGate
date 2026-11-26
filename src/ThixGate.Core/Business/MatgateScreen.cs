@@ -17,7 +17,7 @@ namespace ThixGate.Core.Business;
 /// BGRX rows in zlib - each acknowledged, which paces Matgate. Keys and pointer go as "screen.input" in the engine's own form; for a
 /// connection the user may only watch, Matgate passes nothing on. No clipboard and no sound yet.
 /// </summary>
-public sealed class MatgateScreen : IScreenBackend
+public sealed class MatgateScreen : IScreenBackend, IScreenMeter
 {
     /// <summary>The largest message accepted: a whole 4096 x 2304 screen that did not compress at all.</summary>
     private const int MaxMessageBytes = 48 * 1024 * 1024;
@@ -35,6 +35,13 @@ public sealed class MatgateScreen : IScreenBackend
     private readonly object _frameGate = new();
 
     private WebSocket? _socket;
+    private long _received;
+
+    /// <summary>Bytes of Matgate's messages (the picture comes compressed).</summary>
+    public long BytesReceived => Interlocked.Read(ref _received);
+
+    /// <summary>The round trip to Matgate; the way on to the remote desktop is Matgate's.</summary>
+    public TimeSpan? RoundTrip => MatgateRelay.RoundTripOf(_socket);
     private Task? _reading;
     private byte[]? _pixels;
     private int _width;
@@ -189,6 +196,8 @@ public sealed class MatgateScreen : IScreenBackend
                 {
                     break;
                 }
+
+                Interlocked.Add(ref _received, message.Value.Length);
 
                 var (op, data, payload) = Decode(message.Value);
                 if (op == "screen.ended")

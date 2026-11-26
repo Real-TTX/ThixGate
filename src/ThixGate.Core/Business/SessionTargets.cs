@@ -26,9 +26,10 @@ public static class SessionTargets
 
     /// <summary>
     /// The engine's target for an RDP or VNC connection. A connection "über Matgate" goes to the local end of its relay
-    /// (<paramref name="through"/>, from <see cref="MatgateRelay.OpenAsync"/>) - <see cref="ResolveAsync"/> opens it.
+    /// (<paramref name="through"/>, from <see cref="MatgateRelay.OpenAsync"/>) - <see cref="ResolveAsync"/> opens it. RDP spans the
+    /// <paramref name="monitors"/> (two or more, <see cref="SessionDisplay.MonitorsFor"/>) and brings this computer's folders as drives.
     /// </summary>
-    public static ScreenTarget ScreenTargetOf(RemoteConnection connection, SessionLogin login, int fitWidth, int fitHeight, IPEndPoint? through = null)
+    public static ScreenTarget ScreenTargetOf(RemoteConnection connection, SessionLogin login, int fitWidth, int fitHeight, IPEndPoint? through = null, IReadOnlyList<ScreenMonitor>? monitors = null)
     {
         if (!connection.Protocol.IsScreen())
         {
@@ -54,28 +55,30 @@ public static class SessionTargets
             Resolution = connection.Resolution,
             FitWidth = fitWidth,
             FitHeight = fitHeight,
+            Monitors = monitors is { Count: > 1 } && connection.Protocol == ConnectionProtocol.Rdp ? monitors : [],
+            Drives = SessionDisplay.DrivesFor(connection),
         };
     }
 
     /// <summary>The target to connect to: directly, or through the relay of its Matgate.</summary>
-    public static async Task<ScreenTarget> ResolveAsync(RemoteConnection connection, SessionLogin login, int fitWidth, int fitHeight, CancellationToken cancellationToken)
+    public static async Task<ScreenTarget> ResolveAsync(RemoteConnection connection, SessionLogin login, int fitWidth, int fitHeight, CancellationToken cancellationToken, IReadOnlyList<ScreenMonitor>? monitors = null)
     {
         var through = connection.Via == ConnectVia.Matgate ? await MatgateRelay.OpenAsync(connection, cancellationToken) : null;
-        return ScreenTargetOf(connection, login, fitWidth, fitHeight, through);
+        return ScreenTargetOf(connection, login, fitWidth, fitHeight, through, monitors);
     }
 
     /// <summary>
     /// The backend of a session: a session on Matgate (<see cref="RemoteConnection.SessionOnMatgate"/>, shown by <see cref="MatgateScreen"/>),
     /// or the engine's own RDP/VNC client - directly or through the relay of its Matgate.
     /// </summary>
-    public static async Task<IScreenBackend> BackendAsync(RemoteConnection connection, SessionLogin login, int fitWidth, int fitHeight, IScreenHost host, CancellationToken cancellationToken)
+    public static async Task<IScreenBackend> BackendAsync(RemoteConnection connection, SessionLogin login, int fitWidth, int fitHeight, IScreenHost host, CancellationToken cancellationToken, IReadOnlyList<ScreenMonitor>? monitors = null)
     {
         if (connection.Via == ConnectVia.Matgate && connection.SessionOnMatgate)
         {
             return MatgateScreen.For(connection, fitWidth, fitHeight, host);
         }
 
-        return ScreenBackends.Create(await ResolveAsync(connection, login, fitWidth, fitHeight, cancellationToken), host);
+        return ScreenBackends.Create(await ResolveAsync(connection, login, fitWidth, fitHeight, cancellationToken, monitors), host);
     }
 
     /// <summary>

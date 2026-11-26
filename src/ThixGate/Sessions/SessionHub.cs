@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Matgate.Display;
 using ThixGate.Core.Business;
 using ThixGate.Core.Models;
 
@@ -7,7 +9,8 @@ namespace ThixGate.Sessions;
 /// <summary>
 /// Where the RDP / VNC sessions are: as tabs right of the menu of the main window (like Royal TS: the default) or in windows of their own
 /// ("Eigenes Fenster", "Vollbild" in the settings; "Abdocken" of a tab). One session per connection: opening it again shows the open one. A
-/// session moves between a tab and a window without ending ("Abdocken" / "Andocken"); full screen is a window of its own.
+/// session moves between a tab and a window without ending ("Abdocken" / "Andocken"); full screen is a window of its own. A Remote Desktop
+/// over chosen monitors (<see cref="SessionDisplay.MonitorsFor"/>) opens as a window spanning them.
 /// </summary>
 public static class SessionHub
 {
@@ -36,7 +39,11 @@ public static class SessionHub
 
         var view = Add(connection);
         var where = SettingsService.Get().OpenSessionIn;
-        if (where == OpenSessionIn.Tab && Main is { } main)
+        if (SessionDisplay.MonitorsFor(connection, AvailableMonitors()) is { Count: > 0 } monitors)
+        {
+            ToWindow(view).Span(monitors);
+        }
+        else if (where == OpenSessionIn.Tab && Main is { } main)
         {
             Dock(view, main);
             main.ShowFromTray(); // from the tray the main window may be hidden
@@ -160,14 +167,45 @@ public static class SessionHub
     /// <summary>Full screen: a window of its own in full screen (a tab moves into it); again: the window leaves full screen.</summary>
     private static void FullScreen(SessionView view)
     {
+        var monitors = SessionDisplay.MonitorsFor(view.Connection, AvailableMonitors());
         if (InWindows.TryGetValue(view, out var window))
         {
-            window.ToggleFullScreen();
+            // Back over its monitors when it has some, else full screen on and off.
+            if (window.Spanned.Count == 0 && window.WindowState != WindowState.FullScreen && monitors.Count > 0)
+            {
+                window.Span(monitors);
+            }
+            else
+            {
+                window.ToggleFullScreen();
+            }
+
             return;
         }
 
         Main?.RemoveSessionTab(view);
-        ToWindow(view).WindowState = WindowState.FullScreen;
+        var created = ToWindow(view);
+        if (monitors.Count > 0)
+        {
+            created.Span(monitors);
+            return;
+        }
+
+        created.WindowState = WindowState.FullScreen;
+    }
+
+    /// <summary>The monitors of this computer, in pixels (from any window ThixGate has).</summary>
+    public static IReadOnlyList<ScreenMonitor> AvailableMonitors()
+    {
+        TopLevel? top = Main;
+        if (top is null && Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            top = desktop.Windows.FirstOrDefault();
+        }
+
+        return top is Window { Screens: { } screens }
+            ? [.. screens.All.Select(screen => new ScreenMonitor(screen.Bounds.X, screen.Bounds.Y, screen.Bounds.Width, screen.Bounds.Height, screen.IsPrimary))]
+            : [];
     }
 
     private static void Dock(SessionView view, MainWindow main)

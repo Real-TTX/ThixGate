@@ -32,6 +32,12 @@ public sealed record AppSettings
     /// <summary>Ask before a running session's window is closed.</summary>
     public bool ConfirmCloseSession { get; init; } = true;
 
+    /// <summary>Remote Desktop over "one" monitor (the window) or "all" monitors of the computer, unless a connection says otherwise.</summary>
+    public string Monitors { get; init; } = "one";
+
+    /// <summary>The status bar of a remote desktop (latency, frames, data rate) shows.</summary>
+    public bool ShowSessionStatus { get; init; } = true;
+
     /// <summary>SSH opens in the terminal of the system (<see cref="SshTerminal"/>) instead of ThixGate's own terminal (a tab or window like RDP/VNC).</summary>
     public bool SshInSystemTerminal { get; init; }
 

@@ -28,8 +28,11 @@ public sealed class SessionWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         this.Use(BackgroundProperty, "Mat.Surface");
         view.IsDocked = false;
+        view.MinimizeRequested += Minimize;
         Content = view;
     }
+
+    private void Minimize(object? sender, EventArgs e) => WindowState = WindowState.Minimized;
 
     /// <summary>The session in this window.</summary>
     public SessionView View { get; }
@@ -54,12 +57,83 @@ public sealed class SessionWindow : Window
 
     public int Misses => View.Misses;
 
-    public void ToggleFullScreen() => WindowState = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState.FullScreen;
+    /// <summary>Over these monitors (a desktop over several monitors, or one chosen monitor) instead of a normal window; empty: none.</summary>
+    public IReadOnlyList<Matgate.Display.ScreenMonitor> Spanned { get; private set; } = [];
+
+    public void ToggleFullScreen()
+    {
+        if (Spanned.Count > 0)
+        {
+            Unspan();
+            return;
+        }
+
+        WindowState = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState.FullScreen;
+    }
+
+    /// <summary>
+    /// Covers these monitors without a frame (one monitor: full screen on it). Their rectangle is in pixels; the window's size is in its
+    /// own units, so it is divided by the scaling of the monitor it starts on.
+    /// </summary>
+    public void Span(IReadOnlyList<Matgate.Display.ScreenMonitor> monitors)
+    {
+        if (monitors.Count == 0)
+        {
+            return;
+        }
+
+        Spanned = monitors;
+        var left = monitors.Min(monitor => monitor.Left);
+        var top = monitors.Min(monitor => monitor.Top);
+        var right = monitors.Max(monitor => monitor.Left + monitor.Width);
+        var bottom = monitors.Max(monitor => monitor.Top + monitor.Height);
+        WindowState = WindowState.Normal;
+        SystemDecorations = SystemDecorations.None;
+        CanResize = false;
+        MinWidth = 0;
+        MinHeight = 0;
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Position = new PixelPoint(left, top);
+        var scaling = Screens.ScreenFromPoint(new PixelPoint(left + 1, top + 1))?.Scaling ?? 1;
+        Width = (right - left) / scaling;
+        Height = (bottom - top) / scaling;
+        View.IsFullScreen = true;
+        Activate();
+    }
+
+    private void Unspan()
+    {
+        Spanned = [];
+        SystemDecorations = SystemDecorations.Full;
+        CanResize = true;
+        MinWidth = 640;
+        MinHeight = 420;
+        Width = 1280;
+        Height = 800;
+        View.IsFullScreen = false;
+        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+        if (screen is not null)
+        {
+            var area = screen.WorkingArea;
+            Position = new PixelPoint(area.X + (int)((area.Width - 1280 * screen.Scaling) / 2), area.Y + (int)((area.Height - 800 * screen.Scaling) / 2));
+        }
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == WindowStateProperty && Spanned.Count == 0)
+        {
+            View.IsFullScreen = WindowState == WindowState.FullScreen;
+        }
+    }
 
     /// <summary>The session goes elsewhere (docked): the window closes without ending it.</summary>
     internal void HandOver()
     {
         _handedOver = true;
+        View.MinimizeRequested -= Minimize;
+        View.IsFullScreen = false;
         Content = null;
         Close();
     }
