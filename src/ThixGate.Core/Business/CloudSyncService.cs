@@ -142,11 +142,11 @@ public static class CloudSyncService
     {
         if (IsConnected || AccessPolicy.IsCloudDisabled)
         {
-            CloudHandoff.Remove(CloudApps.Sync);
+            CloudHandoff.Remove(CloudApps.Gate);
             return null;
         }
 
-        if (CloudHandoff.Find(CloudApps.Sync) is not { } handoff)
+        if (CloudHandoff.Find(CloudApps.Gate) is not { } handoff)
         {
             return null;
         }
@@ -161,7 +161,7 @@ public static class CloudSyncService
         }
         catch (BusinessException)
         {
-            CloudHandoff.Remove(CloudApps.Sync);
+            CloudHandoff.Remove(CloudApps.Gate);
             return null;
         }
         catch (Exception exception) when (exception is CloudException or HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
@@ -170,7 +170,7 @@ public static class CloudSyncService
             return null;
         }
 
-        CloudHandoff.Remove(CloudApps.Sync);
+        CloudHandoff.Remove(CloudApps.Gate);
         if (login is null || IsConnected)
         {
             Log.Info("The sign-in of ThixLauncher was used or had expired");

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using MatCloud.Contract;
 using ThixGate.Core.Business;
 using ThixGate.Core.Infrastructure;
 using ThixGate.Core.Models;
@@ -104,6 +105,22 @@ public sealed class SyncTests : IDisposable
         await CloudSyncService.DisconnectAsync();
         Assert.False(SettingsService.Get().Cloud.IsConnected);
         Assert.Equal(6, LibraryService.Connections().Count);
+    }
+
+    [Fact]
+    public async Task The_sign_in_ThixLauncher_left_for_gate_connects_without_the_browser()
+    {
+        _anna.Use();
+        var token = _cloud.LeaveHandoff("ANNA-PC");
+        CloudHandoff.Write(CloudApps.Sync, new DeviceHandoff(Server, token, FakeCloud.UserName, DateTimeOffset.UtcNow.AddMinutes(5)));
+        Assert.Null(await CloudSyncService.ConnectFromLauncherAsync()); // the one of ThixSync is not ThixGate's
+        Assert.True(CloudHandoff.Exists(CloudApps.Sync));
+
+        CloudHandoff.Write(CloudApps.Gate, new DeviceHandoff(Server, token, FakeCloud.UserName, DateTimeOffset.UtcNow.AddMinutes(5)));
+        Assert.NotNull(await CloudSyncService.ConnectFromLauncherAsync());
+        CloudSyncService.Stop();
+        Assert.True(SettingsService.Get().Cloud.IsConnected);
+        Assert.False(CloudHandoff.Exists(CloudApps.Gate));
     }
 
     [Fact]
