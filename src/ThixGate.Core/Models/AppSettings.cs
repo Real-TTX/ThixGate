@@ -123,6 +123,12 @@ public sealed record MatgateAccount
     /// <summary>The device token, protected for this user (Windows DPAPI); on macOS it lives in the Keychain.</summary>
     public string ProtectedToken { get; init; } = "";
 
+    /// <summary>Folders and connections go through the cloud (off: they stay on this computer).</summary>
+    public bool SyncLibrary { get; init; } = true;
+
+    /// <summary>Credentials (without their passwords) go through the cloud (off: they stay on this computer).</summary>
+    public bool SyncCredentials { get; init; } = true;
+
     /// <summary>When the library was last read from Matgate.</summary>
     public DateTimeOffset? LibraryFetched { get; init; }
 
@@ -148,6 +154,12 @@ public sealed record CloudSettings
 
     /// <summary>The device token, protected for this user (Windows DPAPI); on macOS it lives in the Keychain.</summary>
     public string ProtectedToken { get; init; } = "";
+
+    /// <summary>Folders and connections go through the cloud (off: they stay on this computer).</summary>
+    public bool SyncLibrary { get; init; } = true;
+
+    /// <summary>Credentials (without their passwords) go through the cloud (off: they stay on this computer).</summary>
+    public bool SyncCredentials { get; init; } = true;
 
     public bool IsConnected => ServerUrl.Length > 0 && DeviceId > 0;
 }

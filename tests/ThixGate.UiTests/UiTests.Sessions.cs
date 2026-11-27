@@ -172,6 +172,33 @@ public sealed partial class UiTests
     }
 
     [AvaloniaFact]
+    public void A_session_that_ended_offers_to_connect_again_in_the_middle_of_the_picture()
+    {
+        using var data = new TestData();
+        SettingsService.Update(settings => settings with { ConfirmCloseSession = false });
+        var mainWindow = Open();
+
+        // Nobody listens on port 1: the session ends at once (signed in with stored test credentials, so nothing asks first).
+        var credential = CredentialService.Save(new StoredCredential { Name = "Test", UserName = "demo" }, "demo-only-pw");
+        var window = SessionWindow.Show(new RemoteConnection { Name = "Terminalserver", Protocol = ConnectionProtocol.Rdp, Host = "127.0.0.1", Port = 1, CredentialId = credential.Id });
+        var view = window.View;
+        for (var until = DateTime.UtcNow.AddSeconds(15); DateTime.UtcNow < until && !view.ReconnectButton.IsVisible;)
+        {
+            Settle(window);
+        }
+
+        Assert.True(view.ReconnectButton.IsVisible);
+        Assert.Equal("Der Remote-Desktop ist nicht erreichbar.", view.MessageText);
+        Assert.True(view.MessageCard.IsVisible);
+        Assert.Contains(view.ReconnectButton, view.MessageCard.GetLogicalDescendants());
+        Assert.Equal(Avalonia.Layout.HorizontalAlignment.Center, view.MessageCard.HorizontalAlignment);
+        Assert.Equal(Avalonia.Layout.VerticalAlignment.Center, view.MessageCard.VerticalAlignment);
+        Save(window, "session-ended");
+        window.Close();
+        mainWindow.Close();
+    }
+
+    [AvaloniaFact]
     public void Input_goes_to_the_engine_with_numbers_it_can_read()
     {
         // The engine reads JSON numbers as a browser sends them; a whole number put in from C# would read as 0 (keys and mouse lost).

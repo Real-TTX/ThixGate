@@ -86,8 +86,8 @@ internal static class LibraryStore
 
     public static string KeyOf(string collection, Guid id) => $"{collection}/{id:D}";
 
-    /// <summary>What the cloud does not have yet (changed items and tombstones), oldest first.</summary>
-    public static IReadOnlyList<PendingRow> Pending(int limit)
+    /// <summary>What the cloud does not have yet (changed items and tombstones), oldest first; only the collections <paramref name="include"/> takes.</summary>
+    public static IReadOnlyList<PendingRow> Pending(int limit, Func<string, bool>? include = null)
     {
         var data = Read();
         var rows = new List<PendingRow>();
@@ -103,7 +103,7 @@ internal static class LibraryStore
             }
         }
 
-        return [.. rows.OrderBy(row => row.ClientUpdateDate).Take(limit)];
+        return [.. rows.Where(row => include?.Invoke(row.Collection) ?? true).OrderBy(row => row.ClientUpdateDate).Take(limit)];
     }
 
     /// <summary>The cloud has this state of the item now.</summary>

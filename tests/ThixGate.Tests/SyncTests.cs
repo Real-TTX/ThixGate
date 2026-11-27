@@ -72,6 +72,47 @@ public sealed class SyncTests : IDisposable
     }
 
     [Fact]
+    public async Task A_part_switched_off_stays_on_the_computer_and_catches_up_when_switched_on()
+    {
+        _anna.Use();
+        SampleData.Create();
+        CloudSyncService.SetParts(library: true, credentials: false);
+        await _anna.ConnectAsync();
+        Assert.False(SettingsService.Get().Cloud.SyncCredentials); // the sign-in keeps the choice
+        await _anna.SyncAsync();
+
+        // Credentials stay on Anna's computer; folders and connections go.
+        Assert.Equal(6, _cloud.Live(SyncCollections.Connections).Count);
+        Assert.Empty(_cloud.Live(SyncCollections.Credentials));
+        Assert.Empty(LibraryStore.Pending(100, CloudSyncService.Syncs));
+        Assert.NotEmpty(LibraryStore.Pending(100)); // still waiting, for when they are switched on
+
+        // On the laptop the library alone is synced; its own connection stays there.
+        _laptop.Use();
+        CloudSyncService.SetParts(library: false, credentials: true);
+        var own = LibraryService.SaveConnection(new RemoteConnection { Name = "Nur am Laptop", Host = "laptop-only" });
+        await _laptop.ConnectAsync();
+        await _laptop.SyncAsync();
+        Assert.Single(LibraryService.Connections());
+        Assert.DoesNotContain(_cloud.Live(SyncCollections.Connections), item => item.Key == own.Id.ToString("D"));
+
+        // Switched on: what changed meanwhile goes up, and everything of the cloud is read again.
+        _laptop.Use();
+        CloudSyncService.SetParts(library: true, credentials: true);
+        Assert.Equal(0, SettingsService.Get().Cloud.LastRevision);
+        await _laptop.SyncAsync();
+        _laptop.Use();
+        Assert.Equal(7, LibraryService.Connections().Count);
+        Assert.Contains(_cloud.Live(SyncCollections.Connections), item => item.Key == own.Id.ToString("D"));
+
+        _anna.Use();
+        CloudSyncService.SetParts(library: true, credentials: true);
+        await _anna.SyncAsync();
+        Assert.Equal(2, _cloud.Live(SyncCollections.Credentials).Count);
+        Assert.DoesNotContain(_cloud.Items.Values, item => item.Data?.Contains("sample-password", StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
     public async Task The_newer_change_wins()
     {
         var start = new DateTimeOffset(2026, 11, 26, 10, 0, 0, TimeSpan.Zero);

@@ -72,7 +72,7 @@
           <TabItem x:Name="CloudTabItem" Header="ThixCloud">
             <StackPanel>
               <TextBlock Theme="{StaticResource MatText.Muted}" Margin="0,0,0,16"
-                         Text="Mit der ThixCloud sind deine Ordner, Verbindungen und Zugangsdaten (ohne Passwörter) auf allen Geräten gleich. Passwörter und Einstellungen bleiben auf jedem Computer." />
+                         Text="Mit der ThixCloud sind deine Ordner, Verbindungen und Zugangsdaten (ohne Passwörter) auf allen Geräten gleich – was davon, wählst du unten. Passwörter und Einstellungen bleiben auf jedem Computer." />
               <controls:InfoBar x:Name="CloudMessage" />
 
               <!-- Not connected: sign in, in the browser (every account, also MatIdentity) or with user name and password -->
@@ -164,6 +164,21 @@
                     <controls:IconLabel Icon="logout" Text="Abmelden" />
                   </Button>
                 </controls:ActionBar>
+              </StackPanel>
+
+              <!-- What goes through the cloud (also before signing in: the choice counts from the first sync on) -->
+              <StackPanel Margin="0,28,0,0" MaxWidth="760" HorizontalAlignment="Left">
+                <TextBlock Text="Was abgeglichen wird" Theme="{StaticResource MatText.SectionTitle}" Margin="0,0,0,6" />
+                <mat:MatSettingRow Title="Ordner und Verbindungen"
+                                   Description="Die Bibliothek mit jeder Verbindung und ihren Einstellungen. Aus: sie bleibt auf diesem Computer.">
+                  <ToggleSwitch x:Name="SyncLibrarySwitch" OnContent="" OffContent="" AutomationProperties.Name="Ordner und Verbindungen abgleichen" />
+                </mat:MatSettingRow>
+                <mat:MatSettingRow Title="Zugangsdaten" BorderThickness="0"
+                                   Description="Name, Benutzer und Domäne – nie das Passwort. Aus: Verbindungen mit diesen Zugangsdaten fragen auf anderen Geräten nach Benutzer und Passwort.">
+                  <ToggleSwitch x:Name="SyncCredentialsSwitch" OnContent="" OffContent="" AutomationProperties.Name="Zugangsdaten abgleichen" />
+                </mat:MatSettingRow>
+                <TextBlock Theme="{StaticResource MatText.Muted}" TextWrapping="Wrap" Margin="0,10,0,0" x:Name="SyncNeverText"
+                           Text="Nie abgeglichen: Passwörter und eingefügte SSH-Schlüssel (sie bleiben geschützt auf jedem Computer), „zuletzt verwendet“, die Anmeldung bei Matgate mit seinen Verbindungen und die Einstellungen dieses Computers. Ausschalten löscht nichts – weder hier noch in der Cloud; wieder einschalten gleicht alles nach." />
               </StackPanel>
             </StackPanel>
           </TabItem>

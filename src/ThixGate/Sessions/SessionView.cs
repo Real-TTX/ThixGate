@@ -36,6 +36,7 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
     private readonly StatePill _pill = new();
     private readonly TextBlock _overlay = new() { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 520, TextAlignment = TextAlignment.Center };
     private readonly Button _reconnect = Ui.Button("refresh", "Neu verbinden", "MatButton.Primary");
+    private readonly Border _overlayCard = new() { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1), Padding = new Thickness(28, 22), IsVisible = false };
     private readonly Button _secureAttention = Ui.Button("keyboard", "Strg+Alt+Entf");
     private readonly Button _fullScreen = Ui.Button("zoom-in", "Vollbild");
     private readonly Button _dock = new();
@@ -71,6 +72,10 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
         _overlay.Themed("MatText.Muted");
         _reconnect.IsVisible = false;
         _reconnect.Click += (_, _) => Start();
+        // The message of the session in the middle of the picture, and when it ended "Neu verbinden" right below it (as in Matgate).
+        _reconnect.HorizontalAlignment = HorizontalAlignment.Center;
+        _overlayCard.Use(Border.BackgroundProperty, "Mat.Surface").Use(Border.BorderBrushProperty, "Mat.Border");
+        _overlayCard.Child = new StackPanel { Spacing = 16, Children = { _overlay, _reconnect } };
         _secureAttention.Click += (_, _) =>
         {
             _backend?.SecureAttention();
@@ -86,7 +91,7 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
         // The bar above the session (Matgate's session toolbar): state, name and the way it goes; Anzeige, Ton, Strg+Alt+Entf, Vollbild,
         // Abdocken, Trennen. Below it the status bar (SessionView.Status).
         var bar = new DockPanel { Margin = new Thickness(12, 7), LastChildFill = true };
-        bar.Children.Add(Ui.Docked(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _reconnect, _display, _sound, _secureAttention, _fullScreen, _dock, _disconnect } }, Dock.Right));
+        bar.Children.Add(Ui.Docked(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _display, _sound, _secureAttention, _fullScreen, _dock, _disconnect } }, Dock.Right));
         bar.Children.Add(Ui.Docked(new Border { Margin = new Thickness(0, 0, 12, 0), Child = _pill, VerticalAlignment = VerticalAlignment.Center }, Dock.Left));
         bar.Children.Add(BuildTitle());
 
@@ -98,11 +103,11 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
             _terminal.Input += bytes => _ssh?.Send(bytes);
             _terminal.GridChanged += (columns, rows) => _ssh?.Resize(columns, rows);
             _terminal.Buffer.TitleChanged += title => Ui.Post(() => _state.Text = title.Length > 0 ? title : Protocols.Address(connection));
-            _surface.Child = new Panel { Children = { _terminal, _overlay, BuildFullBar() } };
+            _surface.Child = new Panel { Children = { _terminal, _overlayCard, BuildFullBar() } };
         }
         else if (connection.Protocol.IsScreen())
         {
-            _surface.Child = new Panel { Children = { _image, _perf, _overlay, BuildFullBar() } };
+            _surface.Child = new Panel { Children = { _image, _perf, _overlayCard, BuildFullBar() } };
         }
         else
         {
@@ -119,7 +124,7 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
                 web.TitleChanged += title => _state.Text = title.Length > 0 ? title : Protocols.Address(connection);
             }
 
-            _surface.Child = new Panel { Children = { _panel.View, _overlay, BuildFullBar() } };
+            _surface.Child = new Panel { Children = { _panel.View, _overlayCard, BuildFullBar() } };
         }
 
         // What only a remote desktop has: Anzeige, Ton.
@@ -259,6 +264,15 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
 
     public bool IsConnected => _isConnected;
 
+    /// <summary>The card in the middle of the picture with the message and "Neu verbinden" (tests).</summary>
+    internal Border MessageCard => _overlayCard;
+
+    /// <summary>"Neu verbinden" (tests).</summary>
+    internal Button ReconnectButton => _reconnect;
+
+    /// <summary>The message in the middle of the picture (tests).</summary>
+    internal string MessageText => _overlay.Text ?? "";
+
     public string StateText => _pill.Text;
 
     /// <summary>The engine has drawn a picture into the window (tests).</summary>
@@ -300,8 +314,8 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
         _run?.Cancel();
         _run = new CancellationTokenSource();
         var token = _run.Token;
-        ShowState("Verbinde …", "refresh", Tone.Accent, $"Verbinde mit {Protocols.Address(_connection)} …");
         _reconnect.IsVisible = false;
+        ShowState("Verbinde …", "refresh", Tone.Accent, $"Verbinde mit {Protocols.Address(_connection)} …");
         _ = Task.Run(() => _panel is not null ? RunPanelAsync(token) : _terminal is null ? RunAsync(token) : RunSshAsync(token), token);
     }
 
@@ -330,7 +344,7 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
                 _ = SyncClipboardAsync();
             });
             var reason = await backend.RunAsync(token);
-            Ui.Post(() => Ended(reason is { Length: > 0 } ? $"Die Sitzung wurde beendet: {reason}" : "Die Sitzung wurde beendet."));
+            Ui.Post(() => Ended(reason is { Length: > 0 } ? $"Die Sitzung wurde beendet: {SessionMessages.German(reason)}" : "Die Sitzung wurde beendet."));
         }
         catch (OperationCanceledException)
         {
@@ -341,7 +355,7 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
             Log.Warning($"Session {_connection.Id}: {exception.GetType().Name}: {exception.Message}");
             Ui.Post(() => Ended(exception is System.Net.Sockets.SocketException
                 ? $"{Protocols.Address(_connection)} ist nicht erreichbar ({exception.Message})."
-                : exception.Message));
+                : SessionMessages.German(exception.Message)));
         }
         finally
         {
@@ -384,7 +398,7 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
                 terminal.Focus();
             });
             var reason = await session.RunAsync(token);
-            Ui.Post(() => Ended(reason is { Length: > 0 } ? $"Die Sitzung wurde beendet: {reason}" : "Die Sitzung wurde beendet."));
+            Ui.Post(() => Ended(reason is { Length: > 0 } ? $"Die Sitzung wurde beendet: {SessionMessages.German(reason)}" : "Die Sitzung wurde beendet."));
         }
         catch (OperationCanceledException)
         {
@@ -494,8 +508,8 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
         StopStatus();
         _audio.Stop();
         _fetching?.Cancel();
-        ShowState("Getrennt", "x-circle", Tone.Muted, message);
         _reconnect.IsVisible = true;
+        ShowState("Getrennt", "x-circle", Tone.Muted, message);
     }
 
     private void ShowState(string word, string icon, Tone tone, string? overlay)
@@ -504,6 +518,7 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
         StateChanged?.Invoke(this, EventArgs.Empty);
         _overlay.Text = overlay ?? "";
         _overlay.IsVisible = overlay is not null;
+        _overlayCard.IsVisible = overlay is not null || _reconnect.IsVisible;
         _image.Opacity = overlay is null ? 1 : 0.35;
         if (_terminal is not null)
         {

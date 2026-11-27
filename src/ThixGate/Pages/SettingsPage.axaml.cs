@@ -54,6 +54,8 @@ public partial class SettingsPage : UserControl
         MonitorsChoice.SelectionChanged += (_, _) => Apply(() => SettingsService.Update(settings => settings with { Monitors = MonitorsChoice.SelectedIndex == 1 ? "all" : "one" }));
         FullBarChoice.SelectionChanged += (_, _) => Apply(() => SettingsService.Update(settings => settings with { FullScreenBar = FullBarChoice.SelectedIndex == 1 ? "always" : "edge" }));
         StatusSwitch.IsCheckedChanged += (_, _) => Apply(() => SettingsService.Update(settings => settings with { ShowSessionStatus = StatusSwitch.IsChecked == true }));
+        SyncLibrarySwitch.IsCheckedChanged += (_, _) => Apply(() => CloudSyncService.SetParts(SyncLibrarySwitch.IsChecked == true, SyncCredentialsSwitch.IsChecked == true));
+        SyncCredentialsSwitch.IsCheckedChanged += (_, _) => Apply(() => CloudSyncService.SetParts(SyncLibrarySwitch.IsChecked == true, SyncCredentialsSwitch.IsChecked == true));
         SshSystemSwitch.IsCheckedChanged += (_, _) => Apply(() => SettingsService.Update(settings => settings with { SshInSystemTerminal = SshSystemSwitch.IsChecked == true }));
         SshTerminalBox.LostFocus += (_, _) => Apply(() => SettingsService.Update(settings => settings with { SshTerminal = (SshTerminalBox.Text ?? "").Trim() }));
         CheckUpdatesSwitch.IsCheckedChanged += (_, _) => Apply(() => SettingsService.Update(settings => settings with { CheckForUpdates = CheckUpdatesSwitch.IsChecked == true }));
@@ -122,6 +124,8 @@ public partial class SettingsPage : UserControl
             StatusSwitch.IsChecked = settings.ShowSessionStatus;
             FullBarChoice.SelectedIndex = settings.FullScreenBar == "always" ? 1 : 0;
             SshSystemSwitch.IsChecked = settings.SshInSystemTerminal;
+            SyncLibrarySwitch.IsChecked = settings.Cloud.SyncLibrary;
+            SyncCredentialsSwitch.IsChecked = settings.Cloud.SyncCredentials;
             SshTerminalRow.IsVisible = settings.SshInSystemTerminal;
             SshTerminalBox.Text = settings.SshTerminal;
             CheckUpdatesSwitch.IsChecked = settings.CheckForUpdates;
@@ -129,6 +133,7 @@ public partial class SettingsPage : UserControl
             foreach (var control in new Control[]
                      {
                          ThemeChoice, OpenInChoice, ConfirmCloseSwitch, MonitorsChoice, StatusSwitch, FullBarChoice, SshSystemSwitch, SshTerminalBox, ResetButton,
+                         SyncLibrarySwitch, SyncCredentialsSwitch,
                      })
             {
                 control.IsEnabled = !locked;
@@ -414,7 +419,7 @@ public partial class SettingsPage : UserControl
         UpdateProgress.IsVisible = true;
         try
         {
-            await UpdateCoordinator.InstallAsync(_availableUpdate, new Progress<double>(value => UpdateProgress.Value = value));
+            await UpdateCoordinator.InstallAsync(_availableUpdate, new Progress<double>(value => UpdateProgress.Value = value), showWindow: true);
         }
         catch (Exception exception) when (exception is BusinessException or HttpRequestException or IOException)
         {

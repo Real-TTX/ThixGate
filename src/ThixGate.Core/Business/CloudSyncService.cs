@@ -256,6 +256,36 @@ public static class CloudSyncService
         }
     }
 
+    /// <summary>Whether this collection goes through the cloud (Einstellungen › ThixCloud › Was abgeglichen wird).</summary>
+    public static bool Syncs(string collection)
+    {
+        var cloud = SettingsService.Get().Cloud;
+        return collection switch
+        {
+            SyncCollections.Folders or SyncCollections.Connections => cloud.SyncLibrary,
+            SyncCollections.Credentials => cloud.SyncCredentials,
+            _ => false,
+        };
+    }
+
+    /// <summary>
+    /// What goes through the cloud. A part switched off stays on this computer from now on (nothing is deleted, here or there); a part
+    /// switched on again catches up: what changed here meanwhile goes up, and everything of the cloud is read again (the newer one wins).
+    /// </summary>
+    public static void SetParts(bool library, bool credentials)
+    {
+        AccessPolicy.EnsureConfigurationEditable();
+        var before = SettingsService.Get().Cloud;
+        var catchUp = (library && !before.SyncLibrary) || (credentials && !before.SyncCredentials);
+        SettingsService.UpdateCloud(cloud => cloud with
+        {
+            SyncLibrary = library,
+            SyncCredentials = credentials,
+            LastRevision = catchUp ? 0 : cloud.LastRevision,
+        });
+        Kick();
+    }
+
     /// <summary>The address as it is stored: http(s) ("https://" when it is missing), no trailing slash, no query.</summary>
     public static string NormalizeServerUrl(string serverUrl)
     {
@@ -298,8 +328,10 @@ public static class CloudSyncService
     private static Task CompleteSignInAsync(string url, DeviceLoginResponse login)
     {
         var protectedToken = TokenStore.Save(AccountKey(url, login.Account.UserName), login.Token);
-        SettingsService.UpdateCloud(_ => new CloudSettings
+        SettingsService.UpdateCloud(current => new CloudSettings
         {
+            SyncLibrary = current.SyncLibrary,
+            SyncCredentials = current.SyncCredentials,
             ServerUrl = url,
             UserName = login.Account.UserName,
             DisplayName = login.Account.DisplayName,
@@ -348,7 +380,7 @@ public static class CloudSyncService
                 SetStatus(new SyncStatus(CloudState.Online, "Abgeglichen", DateTimeOffset.Now));
                 delay = TimeSpan.FromSeconds(2);
 
-                if (LibraryStore.Pending(1).Count > 0)
+                if (LibraryStore.Pending(1, Syncs).Count > 0)
                 {
                     continue;
                 }
@@ -418,7 +450,7 @@ public static class CloudSyncService
     {
         for (var round = 0; round < 100; round++)
         {
-            var pending = LibraryStore.Pending(SyncContract.MaxBatchSize);
+            var pending = LibraryStore.Pending(SyncContract.MaxBatchSize, Syncs);
             if (pending.Count == 0)
             {
                 return;
@@ -507,7 +539,7 @@ public static class CloudSyncService
         {
             var since = SettingsService.Get().Cloud.LastRevision;
             var changes = await client.GetChangesAsync(since, SyncContract.MaxBatchSize, cancellationToken);
-            foreach (var item in changes.Items.OrderBy(item => CloudSyncItems.OrderOf(item.Collection)).ThenBy(item => item.Revision))
+            foreach (var item in changes.Items.Where(item => Syncs(item.Collection)).OrderBy(item => CloudSyncItems.OrderOf(item.Collection)).ThenBy(item => item.Revision))
             {
                 CloudSyncItems.Apply(item);
             }
@@ -535,7 +567,7 @@ public static class CloudSyncService
             TokenStore.Delete(AccountKey(cloud.ServerUrl, cloud.UserName));
         }
 
-        SettingsService.UpdateCloud(current => new CloudSettings { ServerUrl = current.ServerUrl, UserName = current.UserName, DeviceName = current.DeviceName });
+        SettingsService.UpdateCloud(current => new CloudSettings { ServerUrl = current.ServerUrl, UserName = current.UserName, DeviceName = current.DeviceName, SyncLibrary = current.SyncLibrary, SyncCredentials = current.SyncCredentials });
         LibraryStore.RemoveTombstones();
     }
 

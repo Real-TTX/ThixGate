@@ -92,8 +92,8 @@ src/ThixGate.Core       (no UI) models, business layer (static classes), infrast
                         library copy, take-over, writing back /app/api/connections), MatgateRelay (127.0.0.1 port → WebSocket
                         /app/api/relay/<id>), MatgateScreen (IScreenBackend of a session on Matgate: /app/api/screen/<id>, screen.tiles
                         = BGRX in zlib, acknowledged; keys as screen.input; screen.auth answered to Matgate), CloudSyncService (sign-in,
-                        loop push → pull → long poll) + CloudSyncItems (collections folders/connections/credentials), SettingsService,
-                        AccessPolicy, AutostartService, InstallService, InstallerOptions, UpdateService, MacAppBundle, SampleData
+                        loop push → pull → long poll) - Syncs/SetParts: what goes through the cloud (CloudSettings.SyncLibrary, SyncCredentials; switched on again: LastRevision 0, catch up) + CloudSyncItems (collections folders/connections/credentials), SettingsService,
+                        AccessPolicy, AutostartService, InstallService, InstallerOptions, UpdateService (after an update asked for in the window it comes back with the window: a marker, TakeShowWindowAfterUpdate), MacAppBundle, SampleData
   Terminal/             TerminalBuffer (the xterm emulator: cells, colours, scroll regions, alternate screen, scrollback, replies; no UI), TerminalPalette
   Infrastructure/       LibraryStore (library.json + vault.json, atomic writes, the cloud's pending rows), MatgateStore (matgate/<account>.json), KnownHostsStore (known_hosts.json),
                         LoopbackCallback (the browser comes back to 127.0.0.1), SettingsStore, TokenStore
@@ -120,7 +120,7 @@ src/ThixGate            (Avalonia app)
                         the picture); über Matgate the latency in two legs - to Matgate (relay or socket) and Matgate → host (MatgateRelay.HostRoundTripAsync, screen.stats hostRtt), .Display "Anzeige" (size, quality - live über Matgate, else at the next connect -, sound) and
                         the way it goes, .FullScreen the connection bar as in Microsoft's Windows App (flush at the top edge,
                         menu + name + Minimieren/Vollbild beenden/Trennen; hidden until the pointer rests at the edge or touches the grip - the pointer is followed in the whole window, the bar stays while it is on or just below it - or always); AudioPlayer plays the sound:
-                        waveOut on Windows, AudioQueue on macOS), SessionHub (where a session is: a tab right of the menu (default, like Royal TS) or a
+                        waveOut on Windows, AudioQueue on macOS), SessionMessages (the engine's English errors in German), the message and "Neu verbinden" as a card in the middle of the picture; SessionHub (where a session is: a tab right of the menu (default, like Royal TS) or a
                         SessionWindow; Abdocken/Andocken moves it without ending it; full screen = a window; over several monitors = a
                         frameless window spanning them in pixels, again when the scaling changes, the bar in the middle of the main monitor; one chosen monitor = the system's full screen on it; SessionWindow.Span), KeyMap (PhysicalKey → scancode for RDP, keysym for VNC), SessionLauncher, NullScreenHost
   Controls/             ONE code base per control: LibraryNav (the menu) + ConnectionTree (the library as folders and connections, LibraryService.Tree),
