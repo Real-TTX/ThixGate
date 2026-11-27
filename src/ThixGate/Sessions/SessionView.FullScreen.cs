@@ -87,6 +87,40 @@ public sealed partial class SessionView
     /// <summary>The pointer is at the top edge and the bar comes when it rests there a moment longer (tests).</summary>
     internal bool IsRevealPending => _revealBar.IsEnabled;
 
+    /// <summary>
+    /// Where the bar's middle is, from the left of the session (a desktop over several monitors: the middle of its main monitor, not of
+    /// the whole row); null: the middle of the session.
+    /// </summary>
+    public double? FullBarCentre
+    {
+        get => _fullBarCentre;
+        set
+        {
+            _fullBarCentre = value;
+            PlaceFullBar();
+        }
+    }
+
+    private double? _fullBarCentre;
+    private readonly Panel _barSlot = new() { VerticalAlignment = VerticalAlignment.Top };
+
+    /// <summary>
+    /// The margins that put the middle of a centred child at <paramref name="centre"/> in a row <paramref name="width"/> wide: the free
+    /// side gets what the other side lacks.
+    /// </summary>
+    internal static Thickness CentreAt(double centre, double width) =>
+        new(Math.Max(0, 2 * centre - width), 0, Math.Max(0, width - 2 * centre), 0);
+
+    /// <summary>The bar and its grip at <see cref="FullBarCentre"/> of the session's width.</summary>
+    private void PlaceFullBar()
+    {
+        var width = _surface.Bounds.Width;
+        _barSlot.Margin = _fullBarCentre is { } centre && width > 0 ? CentreAt(Math.Clamp(centre, 0, width), width) : default;
+    }
+
+    /// <summary>The middle of the bar from the left of the session as laid out now (tests).</summary>
+    internal double FullBarMiddle => (_barSlot.Margin.Left + (_surface.Bounds.Width - _barSlot.Margin.Right)) / 2;
+
     private static bool IsBarPinned => SettingsService.Get().FullScreenBar == "always";
 
     private Panel BuildFullBar()
@@ -177,7 +211,10 @@ public sealed partial class SessionView
             e.Handled = true;
         };
 
-        return new Panel { Children = { _handle, _fullBar } };
+        _barSlot.Children.Add(_handle);
+        _barSlot.Children.Add(_fullBar);
+        _surface.SizeChanged += (_, _) => PlaceFullBar();
+        return _barSlot;
     }
 
     /// <summary>The bar's menu (Windows App: Connection information, Monitor configuration, Toolbar options).</summary>

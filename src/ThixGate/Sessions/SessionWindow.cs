@@ -29,6 +29,8 @@ public sealed class SessionWindow : Window
         this.Use(BackgroundProperty, "Mat.Surface");
         view.IsDocked = false;
         view.MinimizeRequested += Minimize;
+        // Moved onto a monitor with another scaling: a span is put on its pixels again.
+        ScalingChanged += (_, _) => FitSpan();
         Content = view;
     }
 
@@ -72,8 +74,9 @@ public sealed class SessionWindow : Window
     }
 
     /// <summary>
-    /// Covers these monitors without a frame (one monitor: full screen on it). Their rectangle is in pixels; the window's size is in its
-    /// own units, so it is divided by the scaling of the monitor it starts on.
+    /// Covers these monitors. One monitor: the window moves onto it and goes into the system's full screen (which fills that monitor
+    /// exactly, whatever its shape and scaling). Several: a frameless window over their rectangle, sized in pixels
+    /// (<see cref="FitSpan"/>), with the connection bar in the middle of the main one.
     /// </summary>
     public void Span(IReadOnlyList<Matgate.Display.ScreenMonitor> monitors)
     {
@@ -82,28 +85,62 @@ public sealed class SessionWindow : Window
             return;
         }
 
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        if (monitors.Count == 1)
+        {
+            var monitor = monitors[0];
+            Spanned = [];
+            WindowState = WindowState.Normal;
+            Position = new PixelPoint(monitor.Left + monitor.Width / 4, monitor.Top + monitor.Height / 4);
+            WindowState = WindowState.FullScreen;
+            Activate();
+            return;
+        }
+
         Spanned = monitors;
-        var left = monitors.Min(monitor => monitor.Left);
-        var top = monitors.Min(monitor => monitor.Top);
-        var right = monitors.Max(monitor => monitor.Left + monitor.Width);
-        var bottom = monitors.Max(monitor => monitor.Top + monitor.Height);
         WindowState = WindowState.Normal;
         SystemDecorations = SystemDecorations.None;
         CanResize = false;
         MinWidth = 0;
         MinHeight = 0;
-        WindowStartupLocation = WindowStartupLocation.Manual;
-        Position = new PixelPoint(left, top);
-        var scaling = Screens.ScreenFromPoint(new PixelPoint(left + 1, top + 1))?.Scaling ?? 1;
-        Width = (right - left) / scaling;
-        Height = (bottom - top) / scaling;
+        FitSpan();
         View.IsFullScreen = true;
         Activate();
+    }
+
+    /// <summary>The rectangle of the spanned monitors in pixels (left, top, width, height).</summary>
+    internal static (int Left, int Top, int Width, int Height) SpanBounds(IReadOnlyList<Matgate.Display.ScreenMonitor> monitors)
+    {
+        var left = monitors.Min(monitor => monitor.Left);
+        var top = monitors.Min(monitor => monitor.Top);
+        return (left, top, monitors.Max(monitor => monitor.Left + monitor.Width) - left, monitors.Max(monitor => monitor.Top + monitor.Height) - top);
+    }
+
+    /// <summary>
+    /// Puts the spanned window on its monitors' pixels. The window's size is in its own units at the scaling it has NOW - which changes
+    /// once Windows moved it onto a monitor with another scaling (and then also suggests another size) - so this runs again whenever
+    /// the scaling changes. The bar's middle: the middle of the main monitor of the span (else of the first).
+    /// </summary>
+    private void FitSpan()
+    {
+        if (Spanned.Count == 0)
+        {
+            return;
+        }
+
+        var (left, top, width, height) = SpanBounds(Spanned);
+        var scaling = RenderScaling > 0 ? RenderScaling : 1;
+        Position = new PixelPoint(left, top);
+        Width = width / scaling;
+        Height = height / scaling;
+        var main = Spanned.FirstOrDefault(monitor => monitor.Primary) ?? Spanned[0];
+        View.FullBarCentre = (main.Left - left + main.Width / 2.0) / scaling;
     }
 
     private void Unspan()
     {
         Spanned = [];
+        View.FullBarCentre = null;
         SystemDecorations = SystemDecorations.Full;
         CanResize = true;
         MinWidth = 640;

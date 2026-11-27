@@ -122,7 +122,7 @@ src/ThixGate            (Avalonia app)
                         menu + name + Minimieren/Vollbild beenden/Trennen; hidden until the pointer rests at the edge or touches the grip - the pointer is followed in the whole window, the bar stays while it is on or just below it - or always); AudioPlayer plays the sound:
                         waveOut on Windows, AudioQueue on macOS), SessionHub (where a session is: a tab right of the menu (default, like Royal TS) or a
                         SessionWindow; Abdocken/Andocken moves it without ending it; full screen = a window; over several monitors = a
-                        frameless window spanning them, SessionWindow.Span), KeyMap (PhysicalKey → scancode for RDP, keysym for VNC), SessionLauncher, NullScreenHost
+                        frameless window spanning them in pixels, again when the scaling changes, the bar in the middle of the main monitor; one chosen monitor = the system's full screen on it; SessionWindow.Span), KeyMap (PhysicalKey → scancode for RDP, keysym for VNC), SessionLauncher, NullScreenHost
   Controls/             ONE code base per control: LibraryNav (the menu) + ConnectionTree (the library as folders and connections, LibraryService.Tree),
                         ListLayout<T> (THE list page), EditLayout (THE create/update page), ListToolbar,
                         Pager, ActionBar, FormFields, FormErrors, InfoBar, IconLabel, StatePill/EmptyState, DataTable, Formats, Protocols

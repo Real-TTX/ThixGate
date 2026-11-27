@@ -109,6 +109,45 @@ public sealed partial class UiTests
     }
 
     [AvaloniaFact]
+    public void Full_screen_over_monitors_fills_them_with_the_bar_in_the_middle_of_the_main_one()
+    {
+        using var data = new TestData();
+        var connection = new RemoteConnection { Name = "Terminalserver", Protocol = ConnectionProtocol.Rdp, Host = "ts01.invalid" };
+
+        // The margins put the bar's middle where it is asked for, on either side of the row's middle.
+        Assert.Equal(new Avalonia.Thickness(1640, 0, 0, 0), SessionView.CentreAt(1720, 1800));
+        Assert.Equal(new Avalonia.Thickness(0, 0, 2280, 0), SessionView.CentreAt(860, 4000));
+
+        // A 21:9 monitor as the main one and a smaller one beside it.
+        Matgate.Display.ScreenMonitor[] monitors = [new(0, 0, 3440, 1440, true), new(3440, 200, 1920, 1080, false)];
+        Assert.Equal((0, 0, 5360, 1440), SessionWindow.SpanBounds(monitors));
+
+        var view = new SessionView(connection);
+        var window = new SessionWindow(view);
+        window.Show();
+        window.Span(monitors);
+        Settle(window);
+        Assert.True(view.IsFullScreen);
+        Assert.Equal(5360 / window.RenderScaling, window.Width, 3);
+        Assert.Equal(1440 / window.RenderScaling, window.Height, 3);
+        Assert.Equal(1720 / window.RenderScaling, view.FullBarCentre!.Value, 3);
+        Assert.Equal(1720 / window.RenderScaling, view.FullBarMiddle, 0);
+
+        // One monitor: the system's full screen on it (it fills the monitor whatever its shape); the bar in the middle of the window.
+        window.ToggleFullScreen();
+        Settle(window);
+        Assert.False(view.IsFullScreen);
+        Assert.Null(view.FullBarCentre);
+        window.Span([new(0, 0, 3440, 1440, true)]);
+        Settle(window);
+        Assert.Equal(WindowState.FullScreen, window.WindowState);
+        Assert.Empty(window.Spanned);
+        Assert.True(view.IsFullScreen);
+        Assert.Null(view.FullBarCentre);
+        window.CloseNow();
+    }
+
+    [AvaloniaFact]
     public void Input_goes_to_the_engine_with_numbers_it_can_read()
     {
         // The engine reads JSON numbers as a browser sends them; a whole number put in from C# would read as 0 (keys and mouse lost).
