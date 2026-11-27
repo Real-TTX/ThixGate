@@ -38,7 +38,7 @@ public sealed partial class SessionView
     private readonly TextBlock _title = new() { VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly ComboBox _sizeChoice = new() { MinWidth = 240, ItemsSource = new[] { "An Fenster anpassen", "Wie am Server", "Feste Auflösung" } };
     private readonly ComboBox _fixedChoice = new() { MinWidth = 160, ItemsSource = FixedSizes.Select(size => size.Replace("x", " × ")).ToList() };
-    private readonly List<ToggleButton> _qualityCards = [];
+    private readonly List<QualityCard> _qualityCards = [];
     private readonly InfoBar _qualityNote = new();
     private readonly Button _reconnectNow = Ui.Button("refresh", "Jetzt neu verbinden", "MatButton.Primary");
     private readonly ToggleSwitch _soundSwitch = new() { OnContent = "", OffContent = "" };
@@ -153,23 +153,7 @@ public sealed partial class SessionView
         var cards = new UniformGrid { Columns = 2, ColumnSpacing = 8, RowSpacing = 8 };
         foreach (var (name, title, hint) in Qualities)
         {
-            var card = new ToggleButton
-            {
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Left,
-                Padding = new Thickness(12, 8),
-                CornerRadius = new CornerRadius(10),
-                Content = new StackPanel
-                {
-                    Spacing = 2,
-                    Children =
-                    {
-                        new IconLabel { Icon = name switch { "fast" => "rocket", "low" => "download", "medium" => "progress-play", _ => "play" }, Text = title },
-                        Ui.Colored(hint, "Mat.TextMuted", 12),
-                    },
-                },
-            };
-            AutomationProperties.SetName(card, title);
+            var card = new QualityCard(name switch { "fast" => "rocket", "low" => "download", "medium" => "progress-play", _ => "play" }, title, hint);
             card.Click += (_, _) => ChooseQuality(name);
             _qualityCards.Add(card);
             cards.Children.Add(card);
@@ -209,6 +193,50 @@ public sealed partial class SessionView
         };
     }
 
+    /// <summary>
+    /// A choice of picture quality as a card: quiet with a thin line when not chosen; chosen, the accent's soft colour with an accent line and
+    /// the title in the accent's text colour - the hint stays readable on both (no white on accent).
+    /// </summary>
+    private sealed class QualityCard : Button
+    {
+        private readonly Border _frame = new() { Padding = new Thickness(12, 9), CornerRadius = new CornerRadius(10), BorderThickness = new Thickness(1.5) };
+        private readonly IconLabel _title;
+        private readonly TextBlock _hint;
+        private bool _selected;
+
+        public QualityCard(string icon, string title, string hint)
+        {
+            this.Themed("MatButton.Ghost");
+            Padding = new Thickness(0);
+            CornerRadius = new CornerRadius(10);
+            HorizontalAlignment = HorizontalAlignment.Stretch;
+            HorizontalContentAlignment = HorizontalAlignment.Stretch;
+            _title = new IconLabel { Icon = icon, Text = title };
+            _hint = Ui.Colored(hint, "Mat.TextMuted", 12);
+            _frame.Child = new StackPanel { Spacing = 3, Children = { _title, _hint } };
+            Content = _frame;
+            AutomationProperties.SetName(this, title);
+            Paint();
+        }
+
+        public bool IsSelected
+        {
+            get => _selected;
+            set
+            {
+                _selected = value;
+                Paint();
+            }
+        }
+
+        private void Paint()
+        {
+            _frame.Use(Border.BackgroundProperty, _selected ? "Mat.AccentSoft" : "Mat.Surface");
+            _frame.Use(Border.BorderBrushProperty, _selected ? "Mat.Accent" : "Mat.Border");
+            _title.Use(TemplatedControl.ForegroundProperty, _selected ? "Mat.AccentText" : "Mat.Text");
+        }
+    }
+
     private static TextBlock Section(string text) => Ui.Colored(text, "Mat.TextMuted", 12, FontWeight.SemiBold);
 
     /// <summary>The panel shows what the session runs with.</summary>
@@ -222,7 +250,7 @@ public sealed partial class SessionView
             _fixedChoice.SelectedIndex = Math.Max(0, Array.IndexOf(FixedSizes, _resolution));
             for (var index = 0; index < Qualities.Length; index++)
             {
-                _qualityCards[index].IsChecked = Qualities[index].Name == _quality;
+                _qualityCards[index].IsSelected = Qualities[index].Name == _quality;
             }
 
             _soundSwitch.IsChecked = _soundOn;
@@ -275,7 +303,7 @@ public sealed partial class SessionView
     {
         foreach (var (card, index) in _qualityCards.Select((card, index) => (card, index)))
         {
-            card.IsChecked = Qualities[index].Name == quality;
+            card.IsSelected = Qualities[index].Name == quality;
         }
 
         if (quality == _quality)

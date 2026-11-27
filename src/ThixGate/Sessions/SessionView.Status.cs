@@ -232,6 +232,8 @@ public sealed partial class SessionView
         _perf.IsVisible = settings.PerformanceOverlay && IsScreen && _isConnected;
         _perf.HorizontalAlignment = settings.PerformanceCorner.EndsWith("right", StringComparison.Ordinal) ? HorizontalAlignment.Right : HorizontalAlignment.Left;
         _perf.VerticalAlignment = settings.PerformanceCorner.StartsWith("bottom", StringComparison.Ordinal) ? VerticalAlignment.Bottom : VerticalAlignment.Top;
+        // In full screen the bar floats at the top: numbers in a top corner stand below it.
+        _perf.Margin = new Thickness(8, _isFullScreen && _perf.VerticalAlignment == VerticalAlignment.Top ? 68 : 8, 8, 8);
         _perfText.FontSize = settings.PerformanceSize switch { "small" => 10, "large" => 12, _ => 11 };
         _perfGraph.IsVisible = settings.PerformanceSize == "large";
         _perfText.TextAlignment = _perf.HorizontalAlignment == HorizontalAlignment.Right ? TextAlignment.Right : TextAlignment.Left;
