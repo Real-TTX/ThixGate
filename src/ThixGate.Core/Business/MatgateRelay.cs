@@ -42,6 +42,38 @@ public static class MatgateRelay
         }
     }
 
+    /// <summary>
+    /// How far the host is from Matgate on this computer's open relay of the connection, as Matgate measures it
+    /// (GET /app/api/relay/{id}/latency). Null when Matgate cannot tell: no relay open, through a tunnel, or a Matgate without it.
+    /// </summary>
+    public static async Task<TimeSpan?> HostRoundTripAsync(RemoteConnection connection, CancellationToken cancellationToken = default)
+    {
+        if (connection.MatgateConnectionId is not { } id || connection.MatgateAccountId is not { } accountId
+            || MatgateService.Find(accountId) is not { } account || MatgateService.ReadToken(account) is not { } token)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var http = MatgateService.CreateHttp(token);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(5));
+            using var response = await http.GetAsync($"{account.ServerUrl}/app/api/relay/{id:D}/latency", timeout.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var answer = System.Text.Json.Nodes.JsonNode.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
+            return answer?["hostMs"]?.GetValue<double>() is { } milliseconds ? TimeSpan.FromMilliseconds(milliseconds) : null;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException or System.Text.Json.JsonException or InvalidOperationException or FormatException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Tests connect the WebSocket themselves (uri, token).</summary>
     internal static Func<Uri, string, CancellationToken, Task<WebSocket>>? ConnectForTests { get; set; }
 

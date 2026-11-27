@@ -71,6 +71,8 @@ public sealed class MatgateTests
                 case "/app/api/logout":
                     LogoutCalls++;
                     return new HttpResponseMessage(HttpStatusCode.NoContent);
+                case "/app/api/relay/0c000000-0000-4000-8000-000000000001/latency":
+                    return Json(new { hostMs = 23.5 });
             }
 
             // Writing back (stage 3): every request kept as it came; a new or changed connection lands in the library.
@@ -137,6 +139,22 @@ public sealed class MatgateTests
             Assert.Contains("schließen", page, StringComparison.Ordinal);
         });
     };
+
+    [Fact]
+    public async Task MatgateTellsHowFarTheHostIsFromIt()
+    {
+        using var data = new TestData();
+        var matgate = new FakeMatgate();
+        MatgateService.HandlerForTests = () => matgate;
+        var account = await MatgateService.SignInAsync(AddAccount().Id, Browser(matgate));
+        var connection = new RemoteConnection { Name = "Web", Host = "web.lab", Via = ConnectVia.Matgate, MatgateAccountId = account.Id, MatgateConnectionId = Guid.Parse("0c000000-0000-4000-8000-000000000001") };
+
+        Assert.Equal(TimeSpan.FromMilliseconds(23.5), await MatgateRelay.HostRoundTripAsync(connection));
+
+        // A Matgate without the question (older), or a connection it does not know: nothing to tell, no error.
+        Assert.Null(await MatgateRelay.HostRoundTripAsync(connection with { MatgateConnectionId = Guid.NewGuid() }));
+        Assert.Null(await MatgateRelay.HostRoundTripAsync(connection with { Via = ConnectVia.Direct, MatgateAccountId = null }));
+    }
 
     [Fact]
     public async Task SignInGoesThroughTheBrowserAndKeepsTheTokenProtected()
@@ -476,6 +494,34 @@ public sealed class MatgateTests
         var input = await Receive(far);
         Assert.Equal(("screen.input", 30), (input.Op, input.Data["code"]!.GetValue<int>()));
 
+        // The clipboard: text copied there arrives here; while watching nothing goes there, else this computer's text goes as screen.clip.set.
+        await Send(far, "screen.clip", new() { ["kind"] = "text" }, System.Text.Encoding.UTF8.GetBytes("von dort"));
+        for (var wait = 0; wait < 50 && host.Clips.Count == 0; wait++)
+        {
+            await Task.Delay(20);
+        }
+
+        Assert.Equal("von dort", Assert.Single(host.Clips));
+
+        // Matgate's statistics tell how far the remote desktop is from it.
+        await Send(far, "screen.stats", new() { ["fps"] = 30, ["rtt"] = 8, ["hostRtt"] = 31.5 });
+        for (var wait = 0; wait < 50 && screen.HostRoundTrip is null; wait++)
+        {
+            await Task.Delay(20);
+        }
+
+        Assert.Equal(TimeSpan.FromMilliseconds(31.5), screen.HostRoundTrip);
+        screen.Clip("screen.clip.set", new() { ["paste"] = false }, System.Text.Encoding.UTF8.GetBytes("nicht beim Zusehen"));
+        await Send(far, "screen.ready", new() { ["width"] = 4, ["height"] = 2, ["watchOnly"] = false, ["colours"] = 32 });
+        for (var wait = 0; wait < 50 && screen.WatchOnly; wait++)
+        {
+            await Task.Delay(20);
+        }
+
+        screen.Clip("screen.clip.set", new() { ["paste"] = false }, System.Text.Encoding.UTF8.GetBytes("von hier"));
+        var clip = await ReceiveWithPayload(far);
+        Assert.Equal(("screen.clip.set", "von hier"), (clip.Op, System.Text.Encoding.UTF8.GetString(clip.Payload.Span)));
+
         var running = screen.RunAsync(CancellationToken.None);
         await Send(far, "screen.ended", new() { ["message"] = "Abgemeldet." });
         Assert.Equal("Abgemeldet.", await running.WaitAsync(TimeSpan.FromSeconds(5)));
@@ -493,8 +539,17 @@ public sealed class MatgateTests
         return (op, data);
     }
 
+    private static async Task<(string Op, System.Text.Json.Nodes.JsonObject Data, ReadOnlyMemory<byte> Payload)> ReceiveWithPayload(WebSocket socket)
+    {
+        var buffer = new byte[64 * 1024];
+        var result = await socket.ReceiveAsync(buffer, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+        return MatgateScreen.Decode(buffer.AsMemory(0, result.Count).ToArray());
+    }
+
     private sealed class RecordingHost : Matgate.Display.IScreenHost
     {
+        public List<string> Clips { get; } = [];
+
         public List<(int X, int Y, int Width, int Height)> Dirty { get; } = [];
 
         public List<string> Statuses { get; } = [];
@@ -515,6 +570,10 @@ public sealed class MatgateTests
 
         public void Event(string op, System.Text.Json.Nodes.JsonObject data, ReadOnlyMemory<byte> payload = default)
         {
+            if (op == "screen.clip")
+            {
+                Clips.Add(System.Text.Encoding.UTF8.GetString(payload.Span));
+            }
         }
 
         public void Status(string state, string? message = null) => Statuses.Add(message ?? state);

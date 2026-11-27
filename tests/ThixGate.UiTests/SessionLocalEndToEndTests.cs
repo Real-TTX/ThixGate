@@ -97,6 +97,26 @@ public sealed class SessionLocalEndToEndTests
             Pump(15, () => (text = Run(clipboard.TryGetTextAsync)) == "VON THIXGATE");
             Assert.Equal("VON THIXGATE", text);
 
+            // Ctrl+V right after copying here (no focus change between): the text goes over first, then the session pastes it.
+            Run(() => clipboard.SetTextAsync("per strg v"));
+            view.RaiseEvent(new Avalonia.Input.KeyEventArgs { RoutedEvent = Avalonia.Input.InputElement.KeyDownEvent, Key = Avalonia.Input.Key.V, PhysicalKey = Avalonia.Input.PhysicalKey.V, KeyModifiers = Avalonia.Input.KeyModifiers.Control });
+            view.RaiseEvent(new Avalonia.Input.KeyEventArgs { RoutedEvent = Avalonia.Input.InputElement.KeyUpEvent, Key = Avalonia.Input.Key.V, PhysicalKey = Avalonia.Input.PhysicalKey.V, KeyModifiers = Avalonia.Input.KeyModifiers.Control });
+            Pump(2, () => false);
+            Assert.Equal("Text in der Zwischenablage der Sitzung", view.ClipboardNote);
+            // The shell takes Ctrl+V as "the next key literally": a first Ctrl+C goes into that, a second clears the line.
+            for (var press = 0; press < 2; press++)
+            {
+                Key(view, 0x1D, true);
+                Key(view, 0x2E, true);
+                Key(view, 0x2E, false);
+                Key(view, 0x1D, false);
+                Pump(0.3, () => false);
+            }
+            Pump(0.5, () => false);
+            Type(view, "xclip -o -selection clipboard | tr a-z A-Z | xclip -selection clipboard\n");
+            Pump(15, () => (text = Run(clipboard.TryGetTextAsync)) == "PER STRG V");
+            Assert.Equal("PER STRG V", text);
+
             // The drive (THIXGATE_E2E_DRIVE: the server has to mount it - xrdp with FUSE): a file of this computer read there and one written back.
             if (Environment.GetEnvironmentVariable("THIXGATE_E2E_DRIVE") is not null)
             {

@@ -115,9 +115,9 @@ src/ThixGate            (Avalonia app)
                         DesignDocument; ResultGrids = Avalonia's DataGrid), WebPanel (IBrowser: WebView2Browser on Windows - package
                         Microsoft.Web.WebView2, core only, BuiltInComInteropSupport; WebKitBrowser on macOS through the Objective-C runtime);
                         SessionView (IScreenHost of Mat.Remote and ISshHost: draws the engine's picture into a WriteableBitmap on demand, pointer,
-                        keys - numbers as doubles, EngineJson -, sign-in dialog; partial: .Clipboard both ways with text, pictures and files,
+                        keys - numbers as doubles, EngineJson -, sign-in dialog; partial: .Clipboard both ways with text, pictures and files - Ctrl+V syncs first and lets the engine paste, text before a picture; a session on Matgate: text both ways,
                         .Status the status bar below as in Matgate's web app (chips, spark, details with StatusGraph, the numbers in
-                        the picture), .Display "Anzeige" (size, quality - live über Matgate, else at the next connect -, sound) and
+                        the picture); über Matgate the latency in two legs - to Matgate (relay or socket) and Matgate → host (MatgateRelay.HostRoundTripAsync, screen.stats hostRtt), .Display "Anzeige" (size, quality - live über Matgate, else at the next connect -, sound) and
                         the way it goes, .FullScreen the connection bar as in Microsoft's Windows App (flush at the top edge,
                         menu + name + Minimieren/Vollbild beenden/Trennen; hidden until the pointer rests at the edge or touches the grip - the pointer is followed in the whole window, the bar stays while it is on or just below it - or always); AudioPlayer plays the sound:
                         waveOut on Windows, AudioQueue on macOS), SessionHub (where a session is: a tab right of the menu (default, like Royal TS) or a

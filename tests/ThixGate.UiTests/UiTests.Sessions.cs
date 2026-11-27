@@ -109,6 +109,30 @@ public sealed partial class UiTests
     }
 
     [AvaloniaFact]
+    public void The_status_says_the_way_short_and_over_Matgate_both_legs()
+    {
+        using var data = new TestData();
+        SampleData.Create();
+        var direct = new SessionView(new RemoteConnection { Name = "PC", Protocol = ConnectionProtocol.Rdp, Host = "pc.invalid" });
+        Assert.Equal("Direkt", direct.RouteText());
+        Assert.Equal("14 ms", direct.LatencyText(14));
+
+        var onMatgate = new SessionView(new RemoteConnection
+        {
+            Name = "Home", Protocol = ConnectionProtocol.Rdp, Host = "home.invalid", Via = ConnectVia.Matgate, MatgateAccountId = SampleData.MatgateAccountId, SessionOnMatgate = true,
+        });
+        Assert.Equal("Auf Matgate · Matgate Büro", onMatgate.RouteText());
+        var through = new SessionView(new RemoteConnection { Name = "ERP", Protocol = ConnectionProtocol.Rdp, Host = "erp.invalid", Via = ConnectVia.Matgate, MatgateAccountId = SampleData.MatgateAccountId });
+        Assert.Equal("Über Matgate · Matgate Büro", through.RouteText());
+
+        // To Matgate + from there to the host, when Matgate tells it; else the total alone.
+        through.SetLegs(12, 31.5);
+        Assert.Equal("12 + 32 ms", through.LatencyText(43.5));
+        through.SetLegs(12, null);
+        Assert.Equal("12 ms", through.LatencyText(12));
+    }
+
+    [AvaloniaFact]
     public void Input_goes_to_the_engine_with_numbers_it_can_read()
     {
         // The engine reads JSON numbers as a browser sends them; a whole number put in from C# would read as 0 (keys and mouse lost).

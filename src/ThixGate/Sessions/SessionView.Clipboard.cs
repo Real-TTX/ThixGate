@@ -34,12 +34,18 @@ public sealed partial class SessionView
     internal string ClipboardNote { get; private set; } = "";
 
     /// <summary>This computer's clipboard to the session, when it changed since both sides last agreed.</summary>
-    internal async Task SyncClipboardAsync()
+    internal Task SyncClipboardAsync() => SyncClipboardAsync(paste: false);
+
+    /// <summary>
+    /// This computer's clipboard to the session when it changed; with <paramref name="paste"/> the session pastes it once it has it (the
+    /// engine presses Ctrl+V there). True when something went over.
+    /// </summary>
+    private async Task<bool> SyncClipboardAsync(bool paste)
     {
         if (!_isConnected || !IsScreen || _backend is not { } backend || TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard
             || Interlocked.Exchange(ref _clipSyncing, 1) == 1)
         {
-            return;
+            return false;
         }
 
         try
@@ -52,14 +58,17 @@ public sealed partial class SessionView
                 if (paths.Count > 0 && fingerprint != _clipFingerprint)
                 {
                     _clipFingerprint = fingerprint;
-                    local.ClipLocalFiles(paths, false);
+                    local.ClipLocalFiles(paths, paste);
                     ClipboardNote = paths.Count == 1 ? "1 Datei in der Zwischenablage der Sitzung" : $"{paths.Count} Dateien in der Zwischenablage der Sitzung";
+                    return true;
                 }
 
-                return;
+                return false;
             }
 
-            if (backend.ClipImages && await clipboard.TryGetBitmapAsync() is { } bitmap)
+            // Text before a picture: Excel, Word, Outlook and others put a picture of the copied text next to it - the text is what was meant.
+            var text = await clipboard.TryGetTextAsync();
+            if (string.IsNullOrEmpty(text) && backend.ClipImages && await clipboard.TryGetBitmapAsync() is { } bitmap)
             {
                 using (bitmap)
                 {
@@ -68,24 +77,26 @@ public sealed partial class SessionView
                     {
                         _clipFingerprint = fingerprint;
                         var id = Guid.NewGuid().ToString("N");
-                        backend.Clip("screen.clip.begin", new JsonObject { ["id"] = id, ["kind"] = "image", ["files"] = new JsonArray(new JsonObject { ["name"] = "bild.bmp" }) }, default);
+                        backend.Clip("screen.clip.begin", new JsonObject { ["id"] = id, ["kind"] = "image", ["paste"] = paste, ["files"] = new JsonArray(new JsonObject { ["name"] = "bild.bmp" }) }, default);
                         backend.Clip("screen.clip.chunk", EngineJson(new JsonObject { ["id"] = id, ["index"] = 0, ["offset"] = 0 }), dib);
                         backend.Clip("screen.clip.end", new JsonObject { ["id"] = id }, default);
                         ClipboardNote = "Bild in der Zwischenablage der Sitzung";
+                        return true;
                     }
                 }
 
-                return;
+                return false;
             }
 
-            if (await clipboard.TryGetTextAsync() is { Length: > 0 } text)
+            if (!string.IsNullOrEmpty(text))
             {
                 var fingerprint = "text:" + text;
                 if (fingerprint != _clipFingerprint)
                 {
                     _clipFingerprint = fingerprint;
-                    backend.Clip("screen.clip.set", new JsonObject { ["paste"] = false }, Encoding.UTF8.GetBytes(text));
+                    backend.Clip("screen.clip.set", new JsonObject { ["paste"] = paste }, Encoding.UTF8.GetBytes(text));
                     ClipboardNote = "Text in der Zwischenablage der Sitzung";
+                    return true;
                 }
             }
         }
@@ -97,6 +108,8 @@ public sealed partial class SessionView
         {
             Interlocked.Exchange(ref _clipSyncing, 0);
         }
+
+        return false;
     }
 
     /// <summary>Something was copied on the remote desktop (any thread): text and pictures go to this computer's clipboard, files are fetched first.</summary>

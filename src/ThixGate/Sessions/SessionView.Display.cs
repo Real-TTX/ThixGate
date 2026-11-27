@@ -48,18 +48,16 @@ public sealed partial class SessionView
     private bool _soundOn;
     private bool _choosing;
 
-    /// <summary>The way the session goes, in words (tests, the status).</summary>
+    /// <summary>The way the session goes, short: "Direkt", "Über Matgate · Home", "Auf Matgate · Home" (the status, the bars, tests).</summary>
     internal string RouteText()
     {
         if (_connection.Via == ConnectVia.Direct)
         {
-            return "Direkt von diesem Computer";
+            return "Direkt";
         }
 
         var name = _connection.MatgateAccountId is { } id && MatgateService.Find(id) is { } account ? account.Name : "Matgate";
-        return _connection.SessionOnMatgate
-            ? $"Sitzung auf Matgate „{name}“ – Matgate verbindet sich und schickt das Bild"
-            : $"Über Matgate „{name}“ – durch seine Durchleitung zum Server";
+        return _connection.SessionOnMatgate ? $"Auf Matgate · {name}" : $"Über Matgate · {name}";
     }
 
     /// <summary>The quality the session runs with ("auto", "medium", "low", "fast"; tests).</summary>

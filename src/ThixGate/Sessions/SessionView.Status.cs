@@ -25,6 +25,9 @@ public sealed partial class SessionView
 {
     private const int StatusSeconds = 60;
 
+    /// <summary>How often a relay asks Matgate how far the host is from it.</summary>
+    private static readonly TimeSpan HostAskEvery = TimeSpan.FromSeconds(3);
+
     private readonly DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly List<StatusGraph.StatusPoint> _samples = [];
     private readonly Border _statusBar = new();
@@ -43,6 +46,9 @@ public sealed partial class SessionView
     private readonly StatusGraph _perfGraph = new() { Width = 240, Height = 64, Margin = new Thickness(0, 4, 0, 0) };
     private int _frames;
     private long _lastBytes;
+    private double? _toMatgate;
+    private double? _hostLatency;
+    private DateTime _hostAsked;
     private long _lastFrames;
     private bool _statusBuilt;
 
@@ -285,9 +291,22 @@ public sealed partial class SessionView
         _lastBytes = bytes;
         _lastFrames = frames;
 
-        // Über Matgate the engine connects to 127.0.0.1: the latency that counts is the one to Matgate.
-        var roundTrip = _connection.Via == ConnectVia.Matgate && !_connection.SessionOnMatgate ? MatgateRelay.RoundTripFor(_connection) : meter?.RoundTrip;
-        var latency = roundTrip is { } value ? Math.Max(0.1, value.TotalMilliseconds) : (double?)null;
+        // Über Matgate the engine connects to 127.0.0.1: the way to Matgate is the relay's, the way on to the host Matgate tells (a session
+        // on Matgate in its statistics, a relay when asked every few seconds). The latency that counts is both together.
+        var viaMatgate = _connection.Via == ConnectVia.Matgate;
+        var roundTrip = viaMatgate && !_connection.SessionOnMatgate ? MatgateRelay.RoundTripFor(_connection) : meter?.RoundTrip;
+        _toMatgate = viaMatgate ? Ms(roundTrip) : null;
+        if (viaMatgate && backend is MatgateScreen onMatgate)
+        {
+            _hostLatency = Ms(onMatgate.HostRoundTrip);
+        }
+        else if (viaMatgate && DateTime.UtcNow - _hostAsked > HostAskEvery)
+        {
+            _hostAsked = DateTime.UtcNow;
+            _ = AskHostLatencyAsync();
+        }
+
+        var latency = Ms(roundTrip) is { } first && viaMatgate && _hostLatency is { } second ? first + second : Ms(roundTrip);
 
         _samples.Add(new StatusGraph.StatusPoint(shown, latency, kilobits));
         if (_samples.Count > StatusSeconds)
@@ -296,7 +315,7 @@ public sealed partial class SessionView
         }
 
         _framesChip.Text = $"{shown} fps";
-        _latencyChip.Text = latency is { } ms ? Milliseconds(ms) : "";
+        _latencyChip.Text = latency is null ? "" : LatencyText(latency);
         _latencyChip.Tone(LatencyTone(latency));
         _rateChip.Text = Rate(kilobits);
         _statusDot.Use(Avalonia.Controls.Shapes.Shape.FillProperty, latency switch
@@ -315,6 +334,17 @@ public sealed partial class SessionView
         }
     }
 
+    private static double? Ms(TimeSpan? roundTrip) => roundTrip is { } value ? Math.Max(0.1, value.TotalMilliseconds) : null;
+
+    private async Task AskHostLatencyAsync() => _hostLatency = Ms(await MatgateRelay.HostRoundTripAsync(_connection));
+
+    /// <summary>The two legs over Matgate as measured last (tests).</summary>
+    internal void SetLegs(double? toMatgate, double? host) => (_toMatgate, _hostLatency) = (toMatgate, host);
+
+    // Über Matgate: "12 + 30 ms" (to Matgate + from there to the host) when Matgate tells the second, else the total alone.
+    internal string LatencyText(double? latency) =>
+        _toMatgate is { } toMatgate && _hostLatency is { } host ? $"{Number(toMatgate)} + {Milliseconds(host)}" : latency is { } ms ? Milliseconds(ms) : "–";
+
     private static string? LatencyTone(double? latency) => latency switch
     {
         null => null,
@@ -331,7 +361,7 @@ public sealed partial class SessionView
         }
 
         var size = SettingsService.Get().PerformanceSize;
-        var first = $"{shown} fps  {(latency is { } ms ? Milliseconds(ms) : "–")}";
+        var first = $"{shown} fps  {LatencyText(latency)}";
         if (size == "small")
         {
             _perfText.Text = first;
@@ -358,15 +388,26 @@ public sealed partial class SessionView
             ("Weg", RouteText(), null),
             ("Bilder/s", $"{fps} gezeigt" + (_samples.Count > 1 ? $" · Mittel {_samples.Average(sample => sample.Frames):0.#}" : ""), null),
             ("Bildzeit", fps > 0 ? $"{1000 / fps:0} ms" : "–", null),
-            ("Latenz (hin und zurück)", latencies.Count == 0
+            ("Latenz", latencies.Count == 0
                 ? "nicht messbar"
                 : $"{Milliseconds(latencies[^1])} · Mittel {Milliseconds(latencies.Average())} · {Milliseconds(latencies.Min())} – {Milliseconds(latencies.Max())}",
                 LatencyTone(latencies.Count == 0 ? null : latencies[^1])),
+        };
+
+        // Über Matgate: the two legs of it on their own.
+        if (_connection.Via == ConnectVia.Matgate)
+        {
+            rows.Add(("  bis Matgate", _toMatgate is { } toMatgate ? Milliseconds(toMatgate) : "–", null));
+            rows.Add(("  Matgate → Host", _hostLatency is { } host ? Milliseconds(host) : "meldet Matgate nicht", null));
+        }
+
+        rows.AddRange(
+        [
             ("Datenrate", $"{Rate(latest?.Kilobits ?? 0)} · Mittel {Rate(_samples.Count == 0 ? 0 : _samples.Average(sample => sample.Kilobits))}", null),
             ("Empfangen", Bytes((_backend as IScreenMeter)?.BytesReceived ?? 0), null),
             ("Bild", $"{PictureSize.Width} × {PictureSize.Height}" + (_backend?.ColorDepth is > 0 and var depth ? $" · {depth} Bit" : ""), null),
             ("Bildqualität", QualityTitle(_quality), null),
-        };
+        ]);
 
         _details.Children.Clear();
         _details.RowDefinitions.Clear();
@@ -381,6 +422,9 @@ public sealed partial class SessionView
 
         _graph.Show([.. _samples]);
     }
+
+    private static string Number(double ms) =>
+        ms < 10 ? ms.ToString("0.0", CultureInfo.GetCultureInfo("de-DE")) : Math.Round(ms).ToString(CultureInfo.InvariantCulture);
 
     private static string Milliseconds(double ms) =>
         ms < 10 ? ms.ToString("0.0", CultureInfo.GetCultureInfo("de-DE")) + " ms" : Math.Round(ms).ToString(CultureInfo.InvariantCulture) + " ms";

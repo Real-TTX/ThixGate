@@ -42,6 +42,8 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
     private readonly Button _disconnect = Ui.Button("power", "Trennen", "MatButton.Danger");
     private readonly DispatcherTimer _resizeTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private readonly HashSet<PhysicalKey> _keysDown = [];
+    private bool _pasting;
+    private bool _pasteReleased;
     private WriteableBitmap? _bitmap;
     private IScreenBackend? _backend;
     private readonly TerminalView? _terminal;
@@ -646,6 +648,10 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
         {
             RemoteClipboard(data, payload);
         }
+        else if (op == "screen.clip.done" && data["paste"]?.GetValue<bool>() == true)
+        {
+            Ui.Post(PressHeldControlAgain);
+        }
     }
 
     void IScreenHost.Status(string state, string? message)
@@ -798,6 +804,38 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
             return;
         }
 
+        var key = new JsonObject
+        {
+            ["t"] = "k",
+            ["s"] = scancode,
+            ["e"] = extended ? 1 : 0,
+            ["d"] = down ? 1 : 0,
+            ["ks"] = keysym,
+            ["ag"] = down && e.PhysicalKey == PhysicalKey.AltRight ? 1 : 0,
+        };
+
+        // Ctrl+V: what was copied here goes over first and the session pastes it then (as Remote Desktop's client and Matgate's web app
+        // do) - so a copy made a moment ago is what arrives, not the one before.
+        if (e.PhysicalKey == PhysicalKey.V && e.KeyModifiers.HasFlag(KeyModifiers.Control) && !e.KeyModifiers.HasFlag(KeyModifiers.Alt))
+        {
+            e.Handled = true;
+            if (down)
+            {
+                if (!_pasting)
+                {
+                    _ = PasteAsync(key);
+                }
+
+                return;
+            }
+
+            if (_pasting)
+            {
+                _pasteReleased = true;
+                return;
+            }
+        }
+
         if (down)
         {
             _keysDown.Add(e.PhysicalKey);
@@ -808,15 +846,48 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
         }
 
         e.Handled = true;
-        Send(new JsonObject
+        Send(key);
+    }
+
+    /// <summary>Ctrl+V in the session: the clipboard first (the engine pastes once the session has it), else the key as it was.</summary>
+    private async Task PasteAsync(JsonObject keyDown)
+    {
+        _pasting = true;
+        _pasteReleased = false;
+        try
         {
-            ["t"] = "k",
-            ["s"] = scancode,
-            ["e"] = extended ? 1 : 0,
-            ["d"] = down ? 1 : 0,
-            ["ks"] = keysym,
-            ["ag"] = down && e.PhysicalKey == PhysicalKey.AltRight ? 1 : 0,
-        });
+            if (await SyncClipboardAsync(paste: true))
+            {
+                return; // the engine presses Ctrl+V there once the session took it
+            }
+
+            _keysDown.Add(PhysicalKey.V);
+            Send(keyDown);
+            if (_pasteReleased)
+            {
+                _keysDown.Remove(PhysicalKey.V);
+                var keyUp = (JsonObject)keyDown.DeepClone();
+                keyUp["d"] = 0;
+                Send(keyUp);
+            }
+        }
+        finally
+        {
+            _pasting = false;
+        }
+    }
+
+    /// <summary>
+    /// The engine pressed Ctrl+V in the session and let Ctrl go there: a Ctrl still held here goes down again, so Ctrl+V once more pastes
+    /// again instead of typing a "v".
+    /// </summary>
+    private void PressHeldControlAgain()
+    {
+        foreach (var held in new[] { PhysicalKey.ControlLeft, PhysicalKey.ControlRight }.Where(_keysDown.Contains))
+        {
+            var (scancode, extended) = KeyMap.ScancodeOf(held);
+            Send(new JsonObject { ["t"] = "k", ["s"] = scancode, ["e"] = extended ? 1 : 0, ["d"] = 1, ["ks"] = KeyMap.KeysymOf(held, null), ["ag"] = 0 });
+        }
     }
 
     /// <summary>Nothing may stay pressed when the session loses the focus (Alt+Tab, a dialog, another tab).</summary>

@@ -15,7 +15,7 @@ namespace ThixGate.Core.Business;
 /// session window does not know the difference. The WebSocket (<c>/app/api/screen/&lt;connection&gt;</c>) speaks Matgate's screen
 /// protocol (frames of a 4-byte header length, a JSON header and a payload); the picture comes as "screen.tiles" - pieces of the screen,
 /// BGRX rows in zlib - each acknowledged, which paces Matgate. Keys and pointer go as "screen.input" in the engine's own form; for a
-/// connection the user may only watch, Matgate passes nothing on. Sound as PCM on request (screen.audio), the picture quality can change while it runs (screen.config); no clipboard yet.
+/// connection the user may only watch, Matgate passes nothing on. Sound as PCM on request (screen.audio), the picture quality can change while it runs (screen.config); the clipboard with text both ways (screen.clip.set / screen.clip; not while watching).
 /// </summary>
 public sealed class MatgateScreen : IScreenBackend, IScreenMeter
 {
@@ -42,6 +42,9 @@ public sealed class MatgateScreen : IScreenBackend, IScreenMeter
 
     /// <summary>The round trip to Matgate; the way on to the remote desktop is Matgate's.</summary>
     public TimeSpan? RoundTrip => MatgateRelay.RoundTripOf(_socket);
+
+    /// <summary>How far the remote desktop is from Matgate, as Matgate last told (screen.stats hostRtt; null: not told).</summary>
+    public TimeSpan? HostRoundTrip { get; private set; }
     private Task? _reading;
     private byte[]? _pixels;
     private int _width;
@@ -117,7 +120,7 @@ public sealed class MatgateScreen : IScreenBackend, IScreenMeter
         var reason = await _ended.Task;
         if (cancellationToken.IsCancellationRequested)
         {
-            await SendAsync("screen.close", []);
+            await SendAsync("screen.close", [], default);
         }
 
         return reason;
@@ -143,7 +146,11 @@ public sealed class MatgateScreen : IScreenBackend, IScreenMeter
 
     public void Clip(string op, JsonObject data, ReadOnlyMemory<byte> payload)
     {
-        // The clipboard of a session on Matgate comes with the clipboard of the session window.
+        // Text goes to the session as Matgate's web app sends it (Matgate lets screen.clip.* through unless the user may only watch).
+        if (op == "screen.clip.set" && !WatchOnly)
+        {
+            _ = SendAsync(op, data, payload);
+        }
     }
 
     public Task<ClipPiece> ClipReadAsync(string token, int index, long offset, CancellationToken cancellationToken) =>
@@ -295,6 +302,17 @@ public sealed class MatgateScreen : IScreenBackend, IScreenMeter
                 }
 
                 break;
+            case "screen.stats":
+                HostRoundTrip = data["hostRtt"] is System.Text.Json.Nodes.JsonValue host && host.TryGetValue<double>(out var milliseconds) ? TimeSpan.FromMilliseconds(milliseconds) : null;
+                break;
+            case "screen.clip":
+                // Copied on the remote desktop: text (and a picture) reach this computer's clipboard; files would need Matgate's download.
+                if (ScreenText(data, "kind") is "text" or "image")
+                {
+                    _host.Event(op, data, payload);
+                }
+
+                break;
             case "screen.status":
                 _host.Status(ScreenText(data, "state") ?? "", ScreenText(data, "message"));
                 break;
@@ -365,16 +383,16 @@ public sealed class MatgateScreen : IScreenBackend, IScreenMeter
         _height = height;
     }
 
-    private void Post(string op, JsonObject data) => _ = SendAsync(op, data);
+    private void Post(string op, JsonObject data) => _ = SendAsync(op, data, default);
 
-    private async Task SendAsync(string op, JsonObject data)
+    private async Task SendAsync(string op, JsonObject data, ReadOnlyMemory<byte> payload = default)
     {
         if (_socket is not { State: WebSocketState.Open } socket)
         {
             return;
         }
 
-        var message = Encode(op, data);
+        var message = Encode(op, data, payload.Span);
         try
         {
             await _sending.WaitAsync(_stop.Token);
