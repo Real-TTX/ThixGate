@@ -49,7 +49,7 @@
                   <ComboBoxItem Content="Alle Monitore" />
                 </ComboBox>
               </mat:MatSettingRow>
-              <mat:MatSettingRow Title="Leiste im Vollbild" Description="Am oberen Rand: die Leiste ist versteckt (ein kleiner Griff zeigt, wo) und kommt, wenn der Zeiger kurz am oberen Rand bleibt; danach geht sie wieder. Immer sichtbar: sie bleibt stehen.">
+              <mat:MatSettingRow Title="Leiste im Vollbild" Description="Am oberen Rand: die Leiste ist versteckt (ein kleiner Griff zeigt, wo) und kommt, wenn der Zeiger kurz am oberen Rand bleibt oder den Griff berührt; sie geht wieder, wenn der Zeiger sich von ihr entfernt. Immer sichtbar: sie bleibt stehen.">
                 <ComboBox x:Name="FullBarChoice" MinWidth="220" AutomationProperties.Name="Leiste im Vollbild">
                   <ComboBoxItem Content="Am oberen Rand" />
                   <ComboBoxItem Content="Immer sichtbar" />

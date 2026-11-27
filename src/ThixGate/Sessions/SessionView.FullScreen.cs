@@ -17,14 +17,25 @@ namespace ThixGate.Sessions;
 /// Full screen (and a desktop over several monitors): the bars above and below go, and a connection bar sits at the top edge instead -
 /// as in Microsoft's Windows App: flush with the edge and rounded below, a menu on the left (Verbindungsinformationen, Anzeige, Ton,
 /// Strg+Alt+Entf, Leiste immer zeigen), the state, name and way of the session, and on the right Minimieren, Vollbild beenden, Trennen.
-/// It stays hidden until the pointer rests at the top edge for a moment (or touches the small grip there) and goes again a moment after
-/// the pointer left it; entering full screen does not show it. As the settings say (<see cref="AppSettings.FullScreenBar"/>) it can
-/// instead always show ("Leiste immer zeigen" in its menu).
+/// It stays hidden until the pointer rests at the top edge for a moment (or touches the grip there) and goes again a moment after
+/// the pointer moved away from it; entering full screen does not show it. The pointer is followed in the whole window (also where the
+/// picture or a panel takes it), and where it was last counts: on macOS the system's menu bar comes down at the top edge and takes the
+/// pointer - the bar then waits below it instead of going. As the settings say (<see cref="AppSettings.FullScreenBar"/>) it can instead
+/// always show ("Leiste immer zeigen" in its menu).
 /// </summary>
 public sealed partial class SessionView
 {
     /// <summary>How long the pointer rests at the top edge before the bar comes (so a quick move to the top does not bring it).</summary>
-    private static readonly TimeSpan RevealDelay = TimeSpan.FromMilliseconds(350);
+    private static readonly TimeSpan RevealDelay = TimeSpan.FromMilliseconds(300);
+
+    /// <summary>How close to the top edge the pointer brings the bar.</summary>
+    private const double RevealZone = 6;
+
+    /// <summary>How far below the bar the pointer may go before it hides (room for the macOS menu bar over it).</summary>
+    private const double StayZone = 48;
+
+    /// <summary>Where the pointer was last seen in the window, from the top of the session (NaN: not yet).</summary>
+    private double _pointerTop = double.NaN;
 
     private readonly Border _fullBar = new();
     private readonly Border _handle = new();
@@ -72,6 +83,9 @@ public sealed partial class SessionView
 
     /// <summary>The pointer rests at the top edge (tests: as if it had rested long enough).</summary>
     internal void RevealBarNow() => ShowFullBar();
+
+    /// <summary>The pointer is at the top edge and the bar comes when it rests there a moment longer (tests).</summary>
+    internal bool IsRevealPending => _revealBar.IsEnabled;
 
     private static bool IsBarPinned => SettingsService.Get().FullScreenBar == "always";
 
@@ -121,21 +135,10 @@ public sealed partial class SessionView
         _fullBar.PointerPressed += (_, e) => e.Handled = true;
         _fullBar.PointerReleased += (_, e) => e.Handled = true;
         _fullBar.PointerMoved += (_, e) => e.Handled = true;
-        _fullBar.PointerEntered += (_, _) => _hideBar.Stop();
-        _fullBar.PointerExited += (_, _) => HideSoon();
         _hideBar.Tick += (_, _) =>
         {
             _hideBar.Stop();
-            if (!IsBarPinned && !_fullBar.IsPointerOver && !IsBarBusy)
-            {
-                _fullBar.IsVisible = false;
-                _handle.IsVisible = _isFullScreen;
-            }
-            else if (!IsBarPinned && !_fullBar.IsPointerOver)
-            {
-                // A menu or panel of the bar is open: look again once it may be closed.
-                _hideBar.Start();
-            }
+            HideBarIfAway();
         };
         _revealBar.Tick += (_, _) =>
         {
@@ -143,14 +146,25 @@ public sealed partial class SessionView
             ShowFullBar();
         };
 
-        // The grip: a small hint at the top edge where the bar waits; touching it brings the bar at once.
-        var grip = new Border { Width = 46, Height = 4, CornerRadius = new CornerRadius(2), VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 3, 0, 0), Opacity = 0.7 }
-            .Use(Border.BackgroundProperty, "Mat.TextFaint");
-        // The area that takes the pointer is a theme colour at no opacity (no colour of its own), the grip on top of it.
+        // The grip: a small tab at the top edge where the bar waits (seen on a dark and a light picture alike); touching it brings the bar.
+        var line = new Border { Width = 28, Height = 3, CornerRadius = new CornerRadius(1.5), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
+            .Use(Border.BackgroundProperty, "Mat.TextMuted");
+        var tab = new Border
+        {
+            Width = 64,
+            Height = 10,
+            CornerRadius = new CornerRadius(0, 0, 5, 5),
+            BorderThickness = new Thickness(1, 0, 1, 1),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top,
+            Opacity = 0.9,
+            Child = line,
+        }.Use(Border.BackgroundProperty, "Mat.Surface").Use(Border.BorderBrushProperty, "Mat.Border");
+        // The area that takes the pointer is wider and taller than the tab: a theme colour at no opacity (no colour of its own).
         var area = new Border { Opacity = 0 }.Use(Border.BackgroundProperty, "Mat.Surface");
-        _handle.Child = new Panel { Children = { area, grip } };
-        _handle.Width = 140;
-        _handle.Height = 12;
+        _handle.Child = new Panel { Children = { area, tab } };
+        _handle.Width = 180;
+        _handle.Height = 16;
         _handle.HorizontalAlignment = HorizontalAlignment.Center;
         _handle.VerticalAlignment = VerticalAlignment.Top;
         _handle.IsVisible = false;
@@ -264,11 +278,32 @@ public sealed partial class SessionView
         _hideBar.Stop();
         _fullBar.IsVisible = true;
         _handle.IsVisible = false;
-        if (!_fullBar.IsPointerOver)
-        {
-            HideSoon();
-        }
+        HideSoon();
     }
+
+    /// <summary>The hide timer ran out: the bar goes unless pinned, busy (a menu or panel of it is open) or the pointer is still near it.</summary>
+    internal void HideBarIfAway()
+    {
+        if (IsBarPinned || !_isFullScreen || !_fullBar.IsVisible)
+        {
+            return;
+        }
+
+        if (IsBarBusy || IsPointerNearBar)
+        {
+            // Look again a moment later.
+            _hideBar.Start();
+            return;
+        }
+
+        _fullBar.IsVisible = false;
+        _handle.IsVisible = true;
+    }
+
+    /// <summary>The pointer was last seen on the bar or just below it (on macOS also: last seen there before the menu bar took it).</summary>
+    private bool IsPointerNearBar => !double.IsNaN(_pointerTop) && _pointerTop <= BarBottom + StayZone;
+
+    private double BarBottom => _fullBar.Bounds.Height > 0 ? _fullBar.Bounds.Bottom : _fullBar.Height;
 
     /// <summary>"Leiste immer zeigen" changed (menu or settings): pinned it shows at once, else it goes when the pointer is not on it.</summary>
     private void ApplyBarSetting()
@@ -292,22 +327,38 @@ public sealed partial class SessionView
 
     private void HideSoon()
     {
-        if (!IsBarPinned && _isFullScreen && _fullBar.IsVisible)
+        if (!IsBarPinned && _isFullScreen && _fullBar.IsVisible && !_hideBar.IsEnabled)
         {
-            _hideBar.Stop();
             _hideBar.Start();
         }
     }
 
-    /// <summary>The pointer resting at the very top of the screen brings the bar; moving away before it came does not.</summary>
-    private void PointerNearTop(PointerEventArgs e)
+    /// <summary>A pointer move anywhere in the window (tunnelled, also when something below handles it).</summary>
+    private void WindowPointerMoved(object? sender, PointerEventArgs e) => TrackPointer(e.GetPosition(this).Y);
+
+    /// <summary>
+    /// The pointer is at <paramref name="top"/> (from the top of the session): resting at the top edge brings the bar (moving away before
+    /// it came does not); moving away from the shown bar lets it go a moment later.
+    /// </summary>
+    internal void TrackPointer(double top)
     {
-        if (!_isFullScreen || _fullBar.IsVisible)
+        _pointerTop = top;
+        if (!_isFullScreen)
         {
             return;
         }
 
-        if (e.GetPosition(_surface).Y <= 2)
+        if (_fullBar.IsVisible)
+        {
+            if (!IsPointerNearBar)
+            {
+                HideSoon();
+            }
+
+            return;
+        }
+
+        if (top <= RevealZone)
         {
             if (!_revealBar.IsEnabled)
             {
