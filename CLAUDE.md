@@ -118,7 +118,8 @@ src/ThixGate            (Avalonia app)
                         keys - numbers as doubles, EngineJson -, sign-in dialog; partial: .Clipboard both ways with text, pictures and files,
                         .Status the status bar below as in Matgate's web app (chips, spark, details with StatusGraph, the numbers in
                         the picture), .Display "Anzeige" (size, quality - live über Matgate, else at the next connect -, sound) and
-                        the way it goes, .FullScreen the floating bar (edge with a handle, or always); AudioPlayer plays the sound:
+                        the way it goes, .FullScreen the connection bar as in Microsoft's Windows App (flush at the top edge,
+                        menu + name + Minimieren/Vollbild beenden/Trennen; hidden until the pointer rests at the edge, or always); AudioPlayer plays the sound:
                         waveOut on Windows, AudioQueue on macOS), SessionHub (where a session is: a tab right of the menu (default, like Royal TS) or a
                         SessionWindow; Abdocken/Andocken moves it without ending it; full screen = a window; over several monitors = a
                         frameless window spanning them, SessionWindow.Span), KeyMap (PhysicalKey → scancode for RDP, keysym for VNC), SessionLauncher, NullScreenHost

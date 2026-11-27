@@ -64,10 +64,29 @@ public sealed partial class UiTests
         var window = Open();
         var view = new SessionView(new RemoteConnection { Name = "Terminalserver", Protocol = ConnectionProtocol.Rdp, Host = "ts01.invalid" });
         Assert.False(view.IsFullBarShown);
+
+        // Entering full screen does not show the bar: only the grip at the top edge.
         view.IsFullScreen = true;
+        Assert.False(view.IsFullBarShown);
+        Assert.True(view.IsHandleShown);
+
+        // The pointer rested at the top edge: the bar comes, with its menu, name and the window's buttons.
+        view.RevealBarNow();
         Assert.True(view.IsFullBarShown);
+        Assert.False(view.IsHandleShown);
+        var names = view.FullBar.GetLogicalDescendants().OfType<Button>().Select(AutomationProperties.GetName).ToList();
+        Assert.Equal(["Menü der Sitzung", "Minimieren", "Vollbild beenden", "Trennen"], names);
+        Assert.Contains(view.FullBar.GetLogicalDescendants().OfType<TextBlock>(), text => text.Text == "Terminalserver");
+
         view.IsFullScreen = false;
         Assert.False(view.IsFullBarShown);
+        Assert.False(view.IsHandleShown);
+
+        // "Leiste immer zeigen": it is there at once.
+        SettingsService.Update(settings => settings with { FullScreenBar = "always" });
+        view.IsFullScreen = true;
+        Assert.True(view.IsFullBarShown);
+        Assert.False(view.IsHandleShown);
         window.Close();
     }
 

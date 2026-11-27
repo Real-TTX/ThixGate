@@ -118,12 +118,17 @@ public sealed class SessionLocalEndToEndTests
 
             Shot(window, "session-rdp-status");
 
-            // Full screen: the floating bar instead of the bars above and below the picture.
+            // Full screen: the connection bar at the top edge instead of the bars above and below the picture - hidden until the
+            // pointer rests at the edge.
             window.ToggleFullScreen();
             Pump(1, () => false);
             view.MeasureStatus();
             Pump(0.5, () => false);
             Assert.True(view.IsFullScreen);
+            Assert.False(view.IsFullBarShown);
+            Assert.True(view.IsHandleShown);
+            view.RevealBarNow();
+            Pump(0.3, () => false);
             Assert.True(view.IsFullBarShown);
             Assert.False(view.StatusBar.IsVisible);
             Shot(window, "session-rdp-fullscreen");
