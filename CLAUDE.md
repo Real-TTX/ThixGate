@@ -81,7 +81,7 @@ src/ThixGate.Core       (no UI) models, business layer (static classes), infrast
   Business/             LibraryService (folders + connections: checks, normalising per protocol, search/filter/sort/pages, tombstones,
                         Changed; Tree: the rows of the tree of the menu - own folders and connections, then every signed-in
                         Matgate with the folders and connections of its library copy, nothing taken over), CredentialService (the vault: passwords via TokenStore, never synced), SessionTargets (connection →
-                        Mat.Remote ScreenTarget; BackendAsync: engine or MatgateScreen), SshSession (SSH.NET: sign-in with password / key file / keyboard-interactive, host keys via SshHostKeys + known_hosts.json, shell
+                        Mat.Remote ScreenTarget; BackendAsync: engine or MatgateScreen), SshKeys (the private key of SSH/SFTP: a key file or a pasted key in the vault under an id made from the connection's, read as Matgate reads it - SshLogin; never synced, exported or on a command line), SshSession (SSH.NET: sign-in with password / key file / keyboard-interactive, pasted key / host keys via SshHostKeys + known_hosts.json, shell
                         "xterm-256color", through the relay "über Matgate"), SessionDisplay (RDP: the monitors of this computer
                         - "one", "all", "1,3" or the settings' default - and its folders as drives; never for VNC or a session on Matgate),
                         FileSession (RemoteFiles + FileOperations with ThixGate's login, über
@@ -111,7 +111,7 @@ src/ThixGate            (Avalonia app)
                         MatgateConnectionForm (a connection IN Matgate: create/change/delete as Matgate allows), SettingsPage (Allgemein | Sitzungen |
                         ThixCloud | Updates | Erweitert), AboutPage
   Sessions/             TerminalView (draws a TerminalBuffer, keys via TerminalKeys, selection, clipboard, mouse reports) for SSH in a SessionView;
-                        ISessionPanel for the rest: FilesView (the file manager), DatabaseView (explorer + QueryDocument, RowsDocument,
+                        ISessionPanel for the rest: FilesView (the file manager), DatabaseView (explorer - its width at a splitter, remembered; the right mouse button as in Management Studio: Oberste 100 Zeilen auswählen = DatabaseSession.SelectTop, run at once - + QueryDocument, RowsDocument,
                         DesignDocument; ResultGrids = Avalonia's DataGrid), WebPanel (IBrowser: WebView2Browser on Windows - package
                         Microsoft.Web.WebView2, core only, BuiltInComInteropSupport; WebKitBrowser on macOS through the Objective-C runtime);
                         SessionView (IScreenHost of Mat.Remote and ISshHost: draws the engine's picture into a WriteableBitmap on demand, pointer,
@@ -137,7 +137,7 @@ tests/ThixGate.UiTests  the UI headless, the end-to-end sessions (opt-in)
 - **Business layer = static classes.** The UI never touches LibraryStore, files, registry or HTTP; validation **and permission checks**
   (AccessPolicy: LockConfiguration, DisableCloud, DisableUpdates, DisableMatgate, DisableSavedPasswords) live in the business layer.
   Errors are `BusinessException(message, field)`; forms show them at the field (`EditLayout.Run`).
-- **Secrets:** a password lives only in the vault (TokenStore: Windows DPAPI value in vault.json, macOS Keychain). Never in library.json,
+- **Secrets:** a password (and a pasted SSH key, SshKeys) lives only in the vault (TokenStore: Windows DPAPI value in vault.json, macOS Keychain). Never in library.json,
   an export, the cloud, a log or a command line. The cloud gets `HasPassword = false`; "is a password here" is per computer.
 - **Sync rules:** general sync of MatCloud, app `gate`; last writer wins by UpdateDate; deletions are tombstones until the cloud has them;
   "last used" stays per computer; a Matgate account is per computer (unknown here → the connection goes direct). "Über Matgate" names
@@ -146,7 +146,7 @@ tests/ThixGate.UiTests  the UI headless, the end-to-end sessions (opt-in)
   a session on Matgate signs in with Matgate's login - only what the user types when Matgate asks goes there, and is not kept here).
 - **Engine:** never fork Mat.Remote here – a change goes to Matgate first ("Matgate first") and arrives by moving the submodule.
 - **UI rules (the owner's):** CRUD = list page (`ListLayout`) + create/update page with delete (`EditLayout`); toolbar above lists
-  (search, filter, sort); pager below the list; actions below, left-aligned, positive to negative, delete with a gap; buttons in one row
+  (search, filter, sort); pager below the list; actions below, left-aligned, positive to negative, delete with a gap; the right mouse button on a list row offers the same actions as a menu (ActionBar.ServeAsMenuOf); buttons in one row
   (Speichern, …, Zurück … Löschen); icons where they help; reusable controls in Controls/ (several on one page work: no static state);
   hide what does not apply (domain only for RDP, key file only for SSH, display tab not for SSH); tabs for areas of one item; cards keep
   their distance; About from the version bottom left; the menu IS the library as a tree (LibraryNav; MatNav is not used); an ActionBar that does not fit shows

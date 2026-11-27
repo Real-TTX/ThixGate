@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Avalonia.VisualTree;
 using Matgate.Services.Database;
 using MatDesktop;
 using ThixGate.Controls;
@@ -16,7 +17,8 @@ namespace ThixGate.Sessions;
 /// <summary>
 /// The database browser of a database connection (SQL Server, MySQL/MariaDB, PostgreSQL) in a tab - Matgate's, with its code
 /// (<see cref="DatabaseSession"/>). Left the object explorer (filter; databases with Tabellen, Sichten, Prozeduren, Funktionen; a table with
-/// Spalten, Schlüssel, Indizes, Fremdschlüssel; right click: Zeilen zeigen, SELECT-Skript, CREATE-Skript, Struktur, Entwerfen, Name kopieren,
+/// Spalten, Schlüssel, Indizes, Fremdschlüssel; right click on the object under the pointer, as in Management Studio: Oberste 100 Zeilen
+/// auswählen (runs at once), Zeilen bearbeiten, Skript als SELECT / CREATE, Struktur, Entwerfen, Name kopieren,
 /// Neue Tabelle, Export). Right the documents as tabs: Abfrage (<see cref="QueryDocument"/>), Zeilen (<see cref="RowsDocument"/>, editable with a
 /// primary key), Struktur, Entwurf (<see cref="DesignDocument"/>).
 /// </summary>
@@ -32,6 +34,10 @@ public sealed class DatabaseView : UserControl, ISessionPanel
     private List<string> _databases = [];
     private readonly Dictionary<string, (List<DbObject> Objects, List<DbRoutine> Routines)> _catalog = new(StringComparer.Ordinal);
     private int _queries;
+    private ColumnDefinition? _treeColumn;
+
+    private const double MinTreeWidth = 200;
+    private const double MaxTreeWidth = 900;
 
     public DatabaseView(RemoteConnection connection)
     {
@@ -42,6 +48,12 @@ public sealed class DatabaseView : UserControl, ISessionPanel
         _filter.TextChanged += (_, _) => BuildTree();
         _tree.ContextRequested += (_, e) =>
         {
+            // As in Management Studio: the right mouse button chooses the object under the pointer, then offers what it can do.
+            if ((e.Source as Visual)?.FindAncestorOfType<TreeViewItem>(includeSelf: true) is { } under)
+            {
+                _tree.SelectedItem = under;
+            }
+
             if (_tree.SelectedItem is TreeViewItem { Tag: Node node } && Menu(node) is { } menu)
             {
                 menu.Open(_tree);
@@ -65,18 +77,28 @@ public sealed class DatabaseView : UserControl, ISessionPanel
         var leftHead = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
         leftHead.Children.Add(Ui.Docked(refresh, Dock.Right));
         leftHead.Children.Add(new Border { Margin = new Thickness(0, 0, 8, 0), Child = _filter });
-        var left = new DockPanel { Margin = new Thickness(12, 12, 6, 12) };
+        var left = new DockPanel { Margin = new Thickness(12, 12, 2, 12) };
         left.Children.Add(Ui.Docked(leftHead, Dock.Top));
         left.Children.Add(Ui.Docked(new Border { Margin = new Thickness(0, 8, 0, 0), Child = newQuery }, Dock.Bottom));
         left.Children.Add(Ui.Card(_tree, new Thickness(4)));
 
-        var right = new DockPanel { Margin = new Thickness(6, 12, 12, 12) };
+        var right = new DockPanel { Margin = new Thickness(2, 12, 12, 12) };
         right.Children.Add(Ui.Docked(_message, Dock.Top));
         right.Children.Add(_documents);
 
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("280,Auto,*") };
+        // The explorer as wide as it was last (the splitter between: a strip to grab, the colour of the surface).
+        var width = Math.Clamp(SettingsService.Get().DatabaseTreeWidth, MinTreeWidth, MaxTreeWidth);
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition(width, GridUnitType.Pixel) { MinWidth = MinTreeWidth, MaxWidth = MaxTreeWidth });
+        grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+        grid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star) { MinWidth = 320 });
         grid.Children.Add(Ui.Cell(left, 0, 0));
-        grid.Children.Add(Ui.Cell(new GridSplitter { Width = 4, ResizeDirection = GridResizeDirection.Columns, Background = null }, 0, 1));
+        var splitter = new GridSplitter { Width = 8, ResizeDirection = GridResizeDirection.Columns, Cursor = new Cursor(StandardCursorType.SizeWestEast) };
+        splitter.Use(BackgroundProperty, "Mat.Surface");
+        AutomationProperties.SetName(splitter, "Breite des Objekt-Explorers");
+        splitter.DragCompleted += (_, _) => SettingsService.Remember(settings => settings with { DatabaseTreeWidth = grid.ColumnDefinitions[0].ActualWidth });
+        _treeColumn = grid.ColumnDefinitions[0];
+        grid.Children.Add(Ui.Cell(splitter, 0, 1));
         grid.Children.Add(Ui.Cell(right, 0, 2));
         Content = grid;
         IsEnabled = false;
@@ -93,6 +115,9 @@ public sealed class DatabaseView : UserControl, ISessionPanel
     public IReadOnlyList<string> Databases => _databases;
 
     public TreeView Tree => _tree;
+
+    /// <summary>The width of the object explorer (tests).</summary>
+    internal double TreeWidth => _treeColumn?.Width.Value ?? 0;
 
     // ================================================================= life cycle
 
@@ -359,9 +384,12 @@ public sealed class DatabaseView : UserControl, ISessionPanel
             case NodeKind.Table or NodeKind.View:
                 var dialect = DatabaseGateway.DialectOf(_session!.Engine);
                 var table = dialect.Table(node.Schema, node.Name);
-                Add("Zeilen zeigen", "table", () => OpenRows(node));
-                Add("Skript: SELECT", "code", () => OpenQuery(node.Database, $"SELECT * FROM {table}"));
-                Add("Skript: CREATE", "code", async () => await ScriptAsync(node, node.Kind == NodeKind.View ? "view" : "table"));
+                // As Management Studio offers them: select the top rows (it runs at once), edit rows, then the scripts.
+                Add($"Oberste {DatabaseSession.TopRows} Zeilen auswählen", "play", async () => await SelectTopAsync(node));
+                Add("Zeilen bearbeiten", "table", () => OpenRows(node));
+                items.Add(new Separator());
+                Add("Skript als SELECT", "code", async () => await OpenQueryAsync(node, run: false));
+                Add("Skript als CREATE", "code", async () => await ScriptAsync(node, node.Kind == NodeKind.View ? "view" : "table"));
                 Add("Struktur zeigen", "list", async () => await OpenStructureAsync(node));
                 if (node.Kind == NodeKind.Table)
                 {
@@ -374,7 +402,7 @@ public sealed class DatabaseView : UserControl, ISessionPanel
                 Add("Als JSON exportieren …", "download", async () => await ExportAsync(node.Database, $"SELECT * FROM {table}", node.Name, json: true));
                 break;
             case NodeKind.Routine:
-                Add("Skript: CREATE", "code", async () => await ScriptAsync(node, node.RoutineKind.Contains("FUNC", StringComparison.OrdinalIgnoreCase) ? "function" : "procedure"));
+                Add("Skript als CREATE", "code", async () => await ScriptAsync(node, node.RoutineKind.Contains("FUNC", StringComparison.OrdinalIgnoreCase) ? "function" : "procedure"));
                 Add("Name kopieren", "copy", async () => await Ui.CopyTextAsync(this, DatabaseGateway.DialectOf(_session!.Engine).Table(node.Schema, node.Name)));
                 break;
             case NodeKind.Database or NodeKind.Group:
@@ -430,6 +458,38 @@ public sealed class DatabaseView : UserControl, ISessionPanel
         {
             AddDocument(node.Name, "table", new RowsDocument(this, session, node.Database, node.Schema, node.Name, node.Kind == NodeKind.Table));
         }
+    }
+
+    /// <summary>"Oberste 100 Zeilen auswählen": the statement with the table's columns in a new query, run at once (Management Studio).</summary>
+    internal Task<QueryDocument?> SelectTopAsync(string database, string schema, string name) => OpenQueryAsync(new Node(NodeKind.Table, database, schema, name), run: true);
+
+    private Task<QueryDocument?> SelectTopAsync(Node node) => OpenQueryAsync(node, run: true);
+
+    // The SELECT of a table or view with its columns (every one, "*", when they cannot be read); run: TOP 100 and at once.
+    private async Task<QueryDocument?> OpenQueryAsync(Node node, bool run)
+    {
+        if (_session is not { } session)
+        {
+            return null;
+        }
+
+        IReadOnlyList<string> columns = [];
+        try
+        {
+            columns = [.. (await session.TableAsync(node.Database, node.Schema, node.Name, Token)).Columns.Select(column => column.Name)];
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // Without the columns the statement takes every one.
+        }
+
+        var document = OpenQuery(node.Database, DatabaseSession.SelectTop(session.Engine, node.Schema, node.Name, columns, run ? DatabaseSession.TopRows : null));
+        if (run)
+        {
+            await document.RunAsync();
+        }
+
+        return document;
     }
 
     private async Task OpenStructureAsync(Node node)

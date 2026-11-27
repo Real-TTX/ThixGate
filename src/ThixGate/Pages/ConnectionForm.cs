@@ -12,7 +12,7 @@ namespace ThixGate.Pages;
 
 /// <summary>
 /// Create / update a connection. Tabs: Allgemein (name, protocol, address, port, folder, favourite) | Anmeldung (saved credentials or
-/// own user, domain for RDP, key file for SSH) | Anzeige (RDP/VNC: quality, resolution, keyboard, certificate) | Gateway (direct or
+/// own user, domain for RDP, key file or pasted key for SSH) | Anzeige (RDP/VNC: quality, resolution, keyboard, certificate) | Gateway (direct or
 /// through a Matgate) | Notizen. Fields that do not apply to the protocol are hidden. Buttons: Speichern, Verbinden, Zurück … Löschen.
 /// </summary>
 public sealed class ConnectionForm : UserControl
@@ -36,6 +36,8 @@ public sealed class ConnectionForm : UserControl
     private readonly TextBox _user = new();
     private readonly TextBox _domain = new();
     private readonly TextBox _keyFile = new() { Watermark = "~/.ssh/id_ed25519" };
+    private readonly TextBox _keyText = new() { AcceptsReturn = true, TextWrapping = Avalonia.Media.TextWrapping.NoWrap, MinHeight = 110, MaxHeight = 220, FontFamily = new Avalonia.Media.FontFamily("Cascadia Mono, Consolas, Menlo, monospace"), FontSize = 12 };
+    private readonly CheckBox _removeKey = new() { Content = "Gespeicherten Schlüssel entfernen" };
     private readonly TextBox _url = new() { Watermark = "https://intranet.example.com" };
     private readonly TextBox _rootPath = new() { Watermark = "/home/anna oder freigabe/ordner" };
     private readonly TextBox _database = new() { Watermark = "Leer: alle, die der Benutzer sehen darf" };
@@ -60,6 +62,7 @@ public sealed class ConnectionForm : UserControl
     private readonly MatDesktop.MatFormField _domainField;
     private readonly MatDesktop.MatFormField _userField;
     private readonly MatDesktop.MatFormField _keyField;
+    private readonly MatDesktop.MatFormField _keyTextField;
     private readonly MatDesktop.MatFormField _matgateField;
     private readonly TabItem _displayTab;
     private readonly Control _keyboardRow;
@@ -102,7 +105,10 @@ public sealed class ConnectionForm : UserControl
         _userField = fields.Add(nameof(RemoteConnection.UserName), "Benutzername", _user, tab: signIn);
         _domainField = fields.Add(nameof(RemoteConnection.Domain), "Domäne", _domain, "Leer bei lokalen Konten; sonst z. B. FIRMA.", signIn);
         _keyField = fields.Add(nameof(RemoteConnection.KeyFile), "Schlüsseldatei", new DockPanel { Children = { Ui.Docked(_browseKey, Dock.Right), _keyFile } },
-            "Ein privater Schlüssel statt eines Passworts (optional).", signIn);
+            "Eine Datei dieses Computers mit dem privaten Schlüssel (optional).", signIn);
+        AutomationProperties.SetName(_keyText, "SSH-Schlüssel");
+        _keyTextField = fields.Add(SshKeys.Field, "SSH-Schlüssel", new StackPanel { Spacing = 8, Children = { _keyText, _removeKey } },
+            "Oder den privaten Schlüssel hier einfügen (OpenSSH, PEM oder PuTTY, optional). Er bleibt geschützt auf diesem Computer und geht nie in die Cloud. Ist er verschlüsselt, ist das Passwort seine Passphrase.", signIn);
         _keyboardRow = FormFields.Row("Tastatur", "Das Tastaturlayout, das der Server für diese Sitzung annimmt.", _keyboard);
         AutomationProperties.SetName(_url, "Adresse der Website");
         AutomationProperties.SetName(_rootPath, "Startordner");
@@ -110,7 +116,9 @@ public sealed class ConnectionForm : UserControl
         _urlField = fields.Add(nameof(RemoteConnection.Url), "Adresse der Website", _url, "Ohne http(s):// nimmt ThixGate https.", general);
         _rootField = fields.Add(nameof(RemoteConnection.RootPath), "Startordner", _rootPath, "Der Ordner, in dem die Verbindung beginnt und den sie nicht verlässt (SMB: Freigabe/Ordner; leer: ganz oben).", general);
         _databaseField = fields.Add(nameof(RemoteConnection.Database), "Datenbank", _database, tab: general);
-        _generalCertificateRow = FormFields.SwitchRow("Zertifikat nicht prüfen", "Für Server mit selbst ausgestelltem Zertifikat (SQL Server: TrustServerCertificate).", _generalCertificate);
+        // A switch among fields: no line below, the room a field leaves before the next one.
+        _generalCertificateRow = FormFields.SwitchRow("Zertifikat nicht prüfen", "Für Server mit selbst ausgestelltem Zertifikat (SQL Server: TrustServerCertificate).", _generalCertificate, isLast: true);
+        _generalCertificateRow.Margin = new Avalonia.Thickness(0, 0, 0, 14);
         _generalCertificate.IsCheckedChanged += (_, _) => _ignoreCertificate.IsChecked = _generalCertificate.IsChecked;
         _ignoreCertificate.IsCheckedChanged += (_, _) => _generalCertificate.IsChecked = _ignoreCertificate.IsChecked;
         _certificateRow = FormFields.SwitchRow("Zertifikat nicht prüfen", "Die meisten Server haben ein selbst ausgestelltes Zertifikat.", _ignoreCertificate, isLast: true);
@@ -132,7 +140,7 @@ public sealed class ConnectionForm : UserControl
         [
             fields.Add(nameof(RemoteConnection.Name), "Name", _name, "So erscheint die Verbindung in der Liste.", general),
             fields.Add(nameof(RemoteConnection.Protocol), "Protokoll", _protocol, tab: general),
-            _addressRow = FormFields.Pair(
+            _addressRow = FormFields.AddressAndPort(
                 fields.Add(nameof(RemoteConnection.Host), "Adresse", _host, "Rechnername oder IP-Adresse", general),
                 fields.Add(nameof(RemoteConnection.Port), "Port", _port, "Leer: Standard", general)),
             _urlField,
@@ -149,6 +157,7 @@ public sealed class ConnectionForm : UserControl
             _userField,
             _domainField,
             _keyField,
+            _keyTextField,
         ]);
         EditLayout.ColumnOf(_displayTab).Children.AddRange(
         [
@@ -258,6 +267,11 @@ public sealed class ConnectionForm : UserControl
         _user.Text = connection.UserName;
         _domain.Text = connection.Domain;
         _keyFile.Text = connection.KeyFile;
+        var keyStored = _existing is not null && SshKeys.IsStored(_existing.Id);
+        _keyText.Text = "";
+        _keyText.Watermark = keyStored ? "Gespeichert – leer lassen, um ihn zu behalten" : "-----BEGIN OPENSSH PRIVATE KEY----- …";
+        _removeKey.IsChecked = false;
+        _removeKey.IsVisible = keyStored;
         _url.Text = connection.Url;
         _rootPath.Text = connection.RootPath;
         _database.Text = connection.Database;
@@ -364,6 +378,7 @@ public sealed class ConnectionForm : UserControl
         _userField.IsVisible = !usesCredential;
         _domainField.IsVisible = protocol.HasDomain() && !usesCredential;
         _keyField.IsVisible = protocol.HasKeyFile();
+        _keyTextField.IsVisible = protocol.HasKeyFile();
         _displayTab.IsVisible = kind == ConnectionKind.Screen;
         _keyboardRow.IsVisible = _certificateRow.IsVisible = _monitorRow.IsVisible = _driveRow.IsVisible = _soundRow.IsVisible = protocol == ConnectionProtocol.Rdp;
         _addressRow.IsVisible = kind != ConnectionKind.Web;
@@ -483,12 +498,29 @@ public sealed class ConnectionForm : UserControl
     private RemoteConnection? TrySave()
     {
         RemoteConnection? saved = null;
-        if (_layout.Run(() => saved = LibraryService.SaveConnection(Collect())))
+        if (_layout.Run(() => saved = LibraryService.SaveConnection(Collect(), NewPrivateKey())))
         {
             _existing = saved;
+            var keyStored = SshKeys.IsStored(saved!.Id);
+            _keyText.Text = "";
+            _keyText.Watermark = keyStored ? "Gespeichert – leer lassen, um ihn zu behalten" : _keyText.Watermark;
+            _removeKey.IsChecked = false;
+            _removeKey.IsVisible = keyStored;
         }
 
         return saved;
+    }
+
+    // The pasted key: null keeps the stored one, "" removes it.
+    private string? NewPrivateKey()
+    {
+        if (_removeKey.IsChecked == true)
+        {
+            return "";
+        }
+
+        var text = _keyText.Text ?? "";
+        return text.Trim().Length > 0 ? text : null;
     }
 
     private async Task BrowseKeyAsync()

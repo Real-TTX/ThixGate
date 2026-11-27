@@ -23,6 +23,11 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- Keys made only for the tests (they open nothing). -->
+  <ItemGroup>
+    <None Include="Keys/*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\ThixGate.Core\ThixGate.Core.csproj" />
   </ItemGroup>

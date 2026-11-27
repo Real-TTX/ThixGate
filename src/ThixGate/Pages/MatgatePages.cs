@@ -229,6 +229,7 @@ public sealed class MatgateForm : UserControl
         _connections.SelectionChanged += (_, _) => ApplyLibraryButtons();
         _connections.ItemActivated += async (_, item) => await ConnectAsync(item);
         var libraryActions = new ActionBar { Children = { _connect, _takeOver, _newInMatgate, _editInMatgate, _reload } };
+        libraryActions.ServeAsMenuOf(_connections.List);
         ToolTip.SetTip(_takeOver, "In die eigene Bibliothek übernehmen");
         EditLayout.ColumnOf(_connectionsTab).Children.AddRange([_libraryState, _connections, libraryActions]);
         _newInMatgate.Click += (_, _) =>

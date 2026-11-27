@@ -1,4 +1,6 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 using Avalonia.Headless.XUnit;
 using Avalonia.LogicalTree;
 using ThixGate.Core.Business;
@@ -53,6 +55,44 @@ public sealed partial class UiTests
         Settle(window);
         var saved = Assert.Single(LibraryService.Connections(), connection => connection.Name == "Intranet");
         Assert.Equal(("https://intranet.lab/start", "intranet.lab"), (saved.Url, saved.Host));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Every_kind_of_connection_has_a_tidy_form()
+    {
+        using var data = new TestData();
+        var window = Open();
+        window.ShowConnectionForm(null);
+        Settle(window);
+        var form = window.ConnectionForm;
+        T Named<T>(string name) where T : Control => form.GetLogicalDescendants().OfType<T>().First(control => Avalonia.Automation.AutomationProperties.GetName(control) == name);
+
+        foreach (var protocol in Enum.GetValues<ConnectionProtocol>())
+        {
+            form.ProtocolChoice.SelectedIndex = (int)protocol;
+            form.Layout.Tabs.SelectedIndex = 0;
+            Settle(window);
+            Save(window, "connection-form-" + protocol.ToString().ToLowerInvariant());
+            if (protocol.KindOf() == ConnectionKind.Web)
+            {
+                continue;
+            }
+
+            // Address and port side by side: the boxes on one line.
+            var host = Named<TextBox>("Adresse");
+            var port = Named<TextBox>("Port");
+            var hostTop = host.TranslatePoint(default, window)!.Value.Y;
+            var portTop = port.TranslatePoint(default, window)!.Value.Y;
+            Assert.True(Math.Abs(hostTop - portTop) < 1, $"{protocol}: address at {hostTop}, port at {portTop}");
+            Assert.Equal(host.Bounds.Height, port.Bounds.Height, 0.5);
+
+            form.Layout.Tabs.SelectedIndex = 1;
+            Settle(window);
+            Save(window, "connection-form-" + protocol.ToString().ToLowerInvariant() + "-signin");
+            Assert.True(protocol.HasKeyFile() == form.Layout.Fields.Find(SshKeys.Field)!.IsVisible, $"{protocol}: SSH key field");
+        }
+
         window.Close();
     }
 
@@ -166,6 +206,21 @@ public sealed partial class UiTests
             Settle(window);
             Assert.True(query.ResultGridsShown.Count > 0, query.MessageText);
             Save(window, "session-database");
+
+            // "Oberste 100 Zeilen auswählen" (Management Studio): the columns one a line, LIMIT 100, run at once.
+            Assert.Equal(320, database.TreeWidth);
+            var top = database.SelectTopAsync("shop", "public", "kunden");
+            for (var until = DateTime.UtcNow.AddSeconds(20); DateTime.UtcNow < until && !top.IsCompleted;)
+            {
+                Settle(window);
+            }
+
+            var selected = top.GetAwaiter().GetResult()!;
+            Assert.Equal("SELECT \"id\"\n      ,\"name\"\n      ,\"ort\"\n  FROM \"public\".\"kunden\"\n LIMIT 100", selected.Editor.Text);
+            Settle(window);
+            Assert.True(selected.ResultGridsShown.Count > 0, selected.MessageText);
+            Assert.Equal(3, selected.ResultGridsShown[0].ItemsSource!.Cast<object>().Count());
+            Save(window, "session-database-top");
         }
         finally
         {

@@ -161,6 +161,59 @@ public sealed class LibraryTests : IDisposable
     }
 
     [Fact]
+    public async Task A_pasted_ssh_key_lives_in_the_vault_and_signs_in()
+    {
+        var key = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Keys", "test-only-ed25519"));
+        var encrypted = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Keys", "test-only-ed25519-encrypted"));
+        var saved = LibraryService.SaveConnection(new RemoteConnection { Name = "Pi", Protocol = ConnectionProtocol.Sftp, Host = "pi.lab", UserName = "pi" }, key.Replace("\n", "\r\n"));
+
+        // In the vault, nowhere else; the session gets it.
+        Assert.True(SshKeys.IsStored(saved.Id));
+        Assert.True(SshKeys.Has(saved));
+        Assert.DoesNotContain("PRIVATE KEY", File.ReadAllText(AppPaths.LibraryFile), StringComparison.Ordinal);
+        Assert.DoesNotContain("PRIVATE KEY", File.ReadAllText(AppPaths.VaultFile), StringComparison.Ordinal);
+        var target = await SessionTargets.FileTargetAsync(saved, "pi", "", CancellationToken.None);
+        Assert.Equal(key.Trim(), target.PrivateKey.Trim());
+        Assert.False(SshKeys.NeedsPassphrase(target.PrivateKey));
+        using (SshKeys.Open(target.PrivateKey, ""))
+        {
+        }
+
+        var export = Path.Combine(_data.Folder, "lib" + TransferService.FileExtension);
+        TransferService.Export(export);
+        Assert.DoesNotContain("PRIVATE KEY", File.ReadAllText(export), StringComparison.Ordinal);
+
+        // Saving again keeps it; a copy brings its own; deleting takes it away.
+        LibraryService.SaveConnection(saved with { Name = "Raspberry" });
+        Assert.True(SshKeys.IsStored(saved.Id));
+        var copy = LibraryService.DuplicateConnection(saved.Id);
+        Assert.True(SshKeys.IsStored(copy.Id));
+        LibraryService.DeleteConnection(copy.Id);
+        Assert.False(SshKeys.IsStored(copy.Id));
+
+        // An encrypted key: its passphrase is the password.
+        LibraryService.SaveConnection(saved, encrypted);
+        Assert.True(SshKeys.NeedsPassphrase(SshKeys.Text(saved)));
+        using (SshKeys.Open(SshKeys.Text(saved), "test-only-pass"))
+        {
+        }
+
+        // Not a key, a key AND a key file, a protocol without keys.
+        var notAKey = Assert.Throws<BusinessException>(() => LibraryService.SaveConnection(saved, "ssh-ed25519 AAAA… public"));
+        Assert.Equal(SshKeys.Field, notAKey.Field);
+        var both = Assert.Throws<BusinessException>(() => LibraryService.SaveConnection(saved with { KeyFile = "C:/keys/id" }));
+        Assert.Equal(nameof(RemoteConnection.KeyFile), both.Field);
+        LibraryService.SaveConnection(saved with { Protocol = ConnectionProtocol.Smb });
+        Assert.False(SshKeys.IsStored(saved.Id));
+
+        // Removing it ("").
+        LibraryService.SaveConnection(saved, key);
+        LibraryService.SaveConnection(saved, "");
+        Assert.False(SshKeys.IsStored(saved.Id));
+        Assert.Equal("", SshKeys.Text(saved));
+    }
+
+    [Fact]
     public void Export_and_import_round_trip_without_passwords_and_rdp_files_become_connections()
     {
         SampleData.Create();

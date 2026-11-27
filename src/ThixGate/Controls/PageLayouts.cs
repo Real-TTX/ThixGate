@@ -11,7 +11,7 @@ namespace ThixGate.Controls;
 
 /// <summary>
 /// THE list page of a CRUD entity (owner's UI rules): title and intro, the toolbar above the list (search, filter, sort), messages, the
-/// list of card rows, below it the action bar (left-aligned, positive to negative, delete with a gap) and the pager with the count.
+/// list of card rows, below it the action bar (left-aligned, positive to negative, delete with a gap) - its buttons are also the menu of the right mouse button on a row - and the pager with the count.
 /// Every list page of ThixGate is one of these; several on one window work (no static state).
 /// </summary>
 public sealed class ListLayout<T> : UserControl where T : class
@@ -78,6 +78,7 @@ public sealed class ListLayout<T> : UserControl where T : class
             }
         };
         _pager.PageChanged += (_, page) => PageChanged?.Invoke(this, page);
+        Actions.ServeAsMenuOf(_list);
     }
 
     public event EventHandler? SelectionChanged;

@@ -31,6 +31,23 @@ public sealed class DatabaseSession
 
     public DatabaseEngine Engine => Target.Protocol;
 
+    /// <summary>The rows "Oberste … Zeilen auswählen" reads (as Management Studio's "Select Top Rows").</summary>
+    public const int TopRows = 100;
+
+    /// <summary>
+    /// The statement of "Oberste 100 Zeilen auswählen", laid out as Management Studio writes it: the columns one a line (every column when
+    /// none are known), SQL Server with TOP, MySQL and PostgreSQL with LIMIT; without <paramref name="count"/> every row ("Skript als SELECT").
+    /// </summary>
+    public static string SelectTop(DatabaseEngine engine, string schema, string table, IReadOnlyList<string> columns, int? count = TopRows)
+    {
+        var dialect = DatabaseGateway.DialectOf(engine);
+        var list = columns.Count == 0 ? "*" : string.Join("\n      ,", columns.Select(dialect.Quote));
+        var from = dialect.Table(schema, table);
+        return count is null ? $"SELECT {list}\n  FROM {from}"
+            : engine == DatabaseEngine.MsSql ? $"SELECT TOP ({count}) {list}\n  FROM {from}"
+            : $"SELECT {list}\n  FROM {from}\n LIMIT {count}";
+    }
+
     /// <summary>The most rows a query or a page shows (more: export).</summary>
     public static int MaxRows => DatabaseGateway.MaxRows;
 

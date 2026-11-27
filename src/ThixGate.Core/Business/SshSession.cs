@@ -39,6 +39,8 @@ public sealed class SshSession : IAsyncDisposable
     private string? _hostKeyRefused;
     private SshAnswer? _typed;
     private bool _canRemember;
+    private string _key = "";
+    private bool _keyNeedsPassphrase;
 
     public SshSession(RemoteConnection connection, ISshHost host)
     {
@@ -59,17 +61,16 @@ public sealed class SshSession : IAsyncDisposable
     /// <summary>Connects, signs in and opens the shell with the size of the terminal.</summary>
     public async Task ConnectAsync(int columns, int rows, CancellationToken cancellationToken)
     {
-        if (_connection.KeyFile.Length > 0 && !File.Exists(_connection.KeyFile))
-        {
-            throw new BusinessException($"Die Schlüsseldatei {_connection.KeyFile} gibt es nicht.", nameof(RemoteConnection.KeyFile));
-        }
+        // The key: pasted (in the vault) or a file; an encrypted one asks for its passphrase.
+        _key = SshKeys.Text(_connection);
+        _keyNeedsPassphrase = SshKeys.NeedsPassphrase(_key, _connection.KeyFile.Length > 0 ? nameof(RemoteConnection.KeyFile) : SshKeys.Field);
 
         var through = _connection.Via == ConnectVia.Matgate ? await MatgateRelay.OpenAsync(_connection, cancellationToken) : null;
         var login = SessionTargets.LoginOf(_connection);
         var userName = login.UserName;
         var password = login.Password;
         _canRemember = login.CredentialId is not null && !AccessPolicy.ArePasswordsDisabled;
-        var needsKeyPassphrase = KeyNeedsPassphrase(_connection.KeyFile);
+        var needsKeyPassphrase = _keyNeedsPassphrase;
         var refused = false;
 
         // Without a password the first try goes like ssh: the server's key first, then the server asks (keyboard-interactive) and the user
@@ -79,7 +80,7 @@ public sealed class SshSession : IAsyncDisposable
             cancellationToken.ThrowIfCancellationRequested();
             if (userName.Length == 0 || (password.Length == 0 && (needsKeyPassphrase || attempt > 0)))
             {
-                var answer = await _host.AskAsync(userName, needsKeyPassphrase ? "Passphrase der Schlüsseldatei" : "Passwort", refused, _canRemember)
+                var answer = await _host.AskAsync(userName, needsKeyPassphrase ? "Passphrase des Schlüssels" : "Passwort", refused, _canRemember)
                              ?? throw new OperationCanceledException(cancellationToken);
                 (userName, password) = (answer.UserName.Trim(), answer.Password);
                 _typed = answer;
@@ -215,15 +216,13 @@ public sealed class SshSession : IAsyncDisposable
     private Renci.SshNet.ConnectionInfo Info(IPEndPoint? through, string userName, string password)
     {
         var methods = new List<AuthenticationMethod>();
-        if (_connection.KeyFile.Length > 0)
+        if (_key.Length > 0)
         {
-            var key = password.Length > 0 && KeyNeedsPassphrase(_connection.KeyFile)
-                ? new PrivateKeyFile(_connection.KeyFile, password)
-                : new PrivateKeyFile(_connection.KeyFile);
+            var key = SshKeys.Open(_key, _keyNeedsPassphrase ? password : "");
             methods.Add(new PrivateKeyAuthenticationMethod(userName, key));
         }
 
-        if (password.Length == 0 && !(_connection.KeyFile.Length > 0 && KeyNeedsPassphrase(_connection.KeyFile)))
+        if (password.Length == 0 && !_keyNeedsPassphrase)
         {
             // No password yet: the server's questions go to the user (after the host key was checked).
             var asking = new KeyboardInteractiveAuthenticationMethod(userName);
@@ -244,7 +243,7 @@ public sealed class SshSession : IAsyncDisposable
             };
             methods.Add(asking);
         }
-        else if (password.Length > 0 && !(_connection.KeyFile.Length > 0 && KeyNeedsPassphrase(_connection.KeyFile)))
+        else if (password.Length > 0 && !_keyNeedsPassphrase)
         {
             methods.Add(new PasswordAuthenticationMethod(userName, password));
             var keyboard = new KeyboardInteractiveAuthenticationMethod(userName);
@@ -291,28 +290,5 @@ public sealed class SshSession : IAsyncDisposable
 
         SshHostKeys.Trust(host, port, e.HostKeyName, fingerprint);
         return true;
-    }
-
-    /// <summary>Whether the key file is encrypted (it then needs its passphrase).</summary>
-    private static bool KeyNeedsPassphrase(string keyFile)
-    {
-        if (keyFile.Length == 0)
-        {
-            return false;
-        }
-
-        try
-        {
-            using var _ = new PrivateKeyFile(keyFile);
-            return false;
-        }
-        catch (SshPassPhraseNullOrEmptyException)
-        {
-            return true;
-        }
-        catch (Exception exception) when (exception is SshException or IOException or ArgumentException or InvalidOperationException)
-        {
-            throw new BusinessException($"Die Schlüsseldatei {keyFile} lässt sich nicht lesen: {exception.Message}", nameof(RemoteConnection.KeyFile));
-        }
     }
 }

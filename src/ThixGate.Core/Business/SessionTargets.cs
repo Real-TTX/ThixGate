@@ -101,16 +101,7 @@ public static class SessionTargets
             throw new BusinessException("FTP geht nicht über Matgate (es öffnet weitere Verbindungen für seine Daten) – bitte direkt verbinden oder SFTP nehmen.");
         }
 
-        var key = "";
-        if (connection.KeyFile.Length > 0)
-        {
-            if (!File.Exists(connection.KeyFile))
-            {
-                throw new BusinessException($"Die Schlüsseldatei {connection.KeyFile} gibt es nicht.", nameof(RemoteConnection.KeyFile));
-            }
-
-            key = await File.ReadAllTextAsync(connection.KeyFile, cancellationToken);
-        }
+        var key = SshKeys.Text(connection);
 
         var through = connection.Via == ConnectVia.Matgate ? await MatgateRelay.OpenAsync(connection, cancellationToken) : null;
         return new Matgate.Files.FileTarget

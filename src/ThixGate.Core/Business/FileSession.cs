@@ -45,7 +45,7 @@ public sealed class FileSession
         for (var attempt = 0; ; attempt++)
         {
             // FTP may be anonymous; the others need a user and a password or key - asked before the first try when the vault has none.
-            var mustAsk = refused || (connection.Protocol != ConnectionProtocol.Ftp && (userName.Length == 0 || (password.Length == 0 && connection.KeyFile.Length == 0)));
+            var mustAsk = refused || (connection.Protocol != ConnectionProtocol.Ftp && (userName.Length == 0 || (password.Length == 0 && !SshKeys.Has(connection))));
             if (mustAsk)
             {
                 typed = await ask(userName, refused, canRemember) ?? throw new OperationCanceledException(cancellationToken);

@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 
 namespace ThixGate.Controls;
 
@@ -93,6 +94,64 @@ public sealed class ActionBar : Panel
 
         return finalSize;
     }
+
+    /// <summary>
+    /// The buttons as a menu: every visible, enabled one with its icon and text, in their order; the gap before delete becomes a line.
+    /// Null when no button can be used.
+    /// </summary>
+    public MenuFlyout? AsMenu()
+    {
+        var menu = new MenuFlyout();
+        foreach (var child in VisibleChildren())
+        {
+            if (child is not Button { IsEffectivelyEnabled: true, Flyout: null, Content: IconLabel label } button)
+            {
+                continue;
+            }
+
+            var text = label.Text.Length > 0 ? label.Text : AutomationProperties.GetName(button);
+            if (string.IsNullOrEmpty(text))
+            {
+                continue;
+            }
+
+            if (GetSeparated(child) && menu.Items.Count > 0)
+            {
+                menu.Items.Add(new Separator());
+            }
+
+            var item = new MenuItem { Header = text, Icon = new IconLabel { Icon = label.Icon } };
+            AutomationProperties.SetName(item, text);
+            item.Click += (_, _) => button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            menu.Items.Add(item);
+        }
+
+        return menu.Items.Count == 0 ? null : menu;
+    }
+
+    /// <summary>
+    /// The right mouse button on a row of <paramref name="list"/> chooses that row and offers these buttons as a menu (the same actions as
+    /// below the list, for the row under the pointer).
+    /// </summary>
+    public void ServeAsMenuOf(ListBox list) =>
+        list.ContextRequested += (_, e) =>
+        {
+            if ((e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true) is not { } row)
+            {
+                return;
+            }
+
+            list.SelectedItem = row.DataContext;
+            if (AsMenu() is { } menu)
+            {
+                LastMenu = menu;
+                menu.ShowAt(row, showAtPointer: true);
+                e.Handled = true;
+            }
+        };
+
+    /// <summary>The menu the right mouse button opened last (tests).</summary>
+    internal MenuFlyout? LastMenu { get; private set; }
 
     private void MeasureChildren()
     {

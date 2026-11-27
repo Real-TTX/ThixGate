@@ -81,6 +81,9 @@ public sealed record AppSettings
     /// <summary>Width of the open menu with the library as a tree (device-independent pixels).</summary>
     public double TreeWidth { get; init; } = 270;
 
+    /// <summary>Width of the object explorer of a database tab (device-independent pixels; the splitter changes it).</summary>
+    public double DatabaseTreeWidth { get; init; } = 320;
+
     /// <summary>The folders open in the tree of the menu.</summary>
     public IReadOnlyList<Guid> ExpandedFolders { get; init; } = [];
 

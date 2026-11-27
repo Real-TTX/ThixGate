@@ -111,4 +111,14 @@ public sealed class FormFields
         left.VerticalAlignment = right.VerticalAlignment = VerticalAlignment.Top;
         return grid;
     }
+
+    /// <summary>Address and port on one line: the address takes the room, the port box its own width right of it, under its label.</summary>
+    public static Grid AddressAndPort(Control address, Control port)
+    {
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,16,Auto") };
+        grid.Children.Add(Ui.Cell(address, 0, 0));
+        grid.Children.Add(Ui.Cell(port, 0, 2));
+        address.VerticalAlignment = port.VerticalAlignment = VerticalAlignment.Top;
+        return grid;
+    }
 }

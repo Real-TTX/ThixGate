@@ -75,7 +75,7 @@ public sealed class MatgateConnectionForm : UserControl
         [
             fields.Add(nameof(MatgateConnectionDraft.Name), "Name", _name, "So erscheint die Verbindung in Matgate und hier.", general),
             fields.Add(nameof(MatgateConnectionDraft.Protocol), "Protokoll", _protocol, tab: general),
-            _addressRow = FormFields.Pair(
+            _addressRow = FormFields.AddressAndPort(
                 fields.Add(nameof(MatgateConnectionDraft.Host), "Adresse", _host, "Wie Matgate das Ziel erreicht", general),
                 fields.Add(nameof(MatgateConnectionDraft.Port), "Port", _port, "Leer: Standard", general)),
             _urlField,

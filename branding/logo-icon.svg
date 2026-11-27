@@ -1,7 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
   <!--
-    ThixGate app icon, full detail (48 px and larger): a gate - an arch on two pillars - with a chevron going through it:
-    connecting through the gateway to the remote machine. On an indigo tile. Geometry on a 256 grid;
+    ThixGate app icon, full detail (48 px and larger), in the style of the Thix apps (a solid white object with depth, as the
+    clipboard of ThixClip): a gate - a white arch on two pillars - with a dark passage and a chevron going through it, the screen of
+    the remote machine behind it (translucent). On an indigo tile. Geometry on a 256 grid;
     tools/render-icons.js renders the PNG, ICO and ICNS files from it.
   -->
   <defs>
@@ -9,8 +10,16 @@
       <stop offset="0" stop-color="#8F86FF"/>
       <stop offset="1" stop-color="#4B3FCF"/>
     </linearGradient>
+    <linearGradient id="gate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#ECEAFF"/>
+    </linearGradient>
   </defs>
   <rect x="16" y="16" width="224" height="224" rx="52" fill="url(#tile)"/>
-  <path d="M80 190V122A48 48 0 0 1 176 122V190" fill="none" stroke="#FFFFFF" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M120 128L148 154L120 180" fill="none" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- the remote machine behind the gate -->
+  <rect x="118" y="46" width="100" height="80" rx="16" fill="#FFFFFF" fill-opacity="0.38"/>
+  <!-- the gate -->
+  <path d="M56 206V132A66 66 0 0 1 188 132V206A14 14 0 0 1 174 220H70A14 14 0 0 1 56 206Z" fill="url(#gate)"/>
+  <path d="M90 220V140A32 32 0 0 1 154 140V220Z" fill="#2E2496"/>
+  <path d="M111 158L132 178L111 198" fill="none" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

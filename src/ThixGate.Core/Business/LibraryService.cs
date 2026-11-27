@@ -102,13 +102,33 @@ public static partial class LibraryService
 
     // ===== Connections =====
 
-    /// <summary>Creates or updates a connection (by its id) after every check; returns what was saved.</summary>
-    public static RemoteConnection SaveConnection(RemoteConnection connection)
+    /// <summary>
+    /// Creates or updates a connection (by its id) after every check; returns what was saved. <paramref name="newPrivateKey"/> (SSH, SFTP):
+    /// null keeps the stored key, "" removes it, anything else is a pasted private key that replaces it (in the vault, see <see cref="SshKeys"/>).
+    /// </summary>
+    public static RemoteConnection SaveConnection(RemoteConnection connection, string? newPrivateKey = null)
     {
         AccessPolicy.EnsureConfigurationEditable();
         var data = LibraryStore.Read();
         var normalized = Normalize(connection);
         Validate(normalized, data);
+
+        // The key: only where SSH signs in; pasted or a file, not both.
+        if (!normalized.Protocol.HasKeyFile())
+        {
+            newPrivateKey = "";
+        }
+        else if (newPrivateKey is { Length: > 0 })
+        {
+            AccessPolicy.EnsurePasswordsAllowed();
+            newPrivateKey = newPrivateKey.Trim().Length == 0 ? null : SshKeys.Check(newPrivateKey);
+        }
+
+        var keyStored = newPrivateKey is null ? SshKeys.IsStored(normalized.Id) : newPrivateKey.Length > 0;
+        if (keyStored && normalized.KeyFile.Length > 0)
+        {
+            throw new BusinessException("Entweder eine Schlüsseldatei oder ein eingetragener Schlüssel – bitte eines davon leeren.", nameof(RemoteConnection.KeyFile));
+        }
 
         var now = AppClock.UtcNow;
         var existing = data.Connections.FirstOrDefault(item => item.Id == normalized.Id);
@@ -124,16 +144,18 @@ public static partial class LibraryService
             library.Connections.RemoveAll(item => item.Id == saved.Id);
             library.Connections.Add(saved);
         });
+        SshKeys.Store(saved.Id, newPrivateKey);
         Raise();
         return saved;
     }
 
-    /// <summary>A copy named "… (Kopie)" in the same folder.</summary>
+    /// <summary>A copy named "… (Kopie)" in the same folder (with the key stored for the original).</summary>
     public static RemoteConnection DuplicateConnection(Guid id)
     {
         var original = FindConnection(id) ?? throw new BusinessException("Diese Verbindung gibt es nicht mehr.");
         var name = original.Name + " (Kopie)";
-        return SaveConnection(original with { Id = Guid.NewGuid(), Name = name.Length > MaxNameLength ? name[..MaxNameLength] : name, LastUsed = null, IsFavorite = false });
+        return SaveConnection(original with { Id = Guid.NewGuid(), Name = name.Length > MaxNameLength ? name[..MaxNameLength] : name, LastUsed = null, IsFavorite = false },
+            SshKeys.Stored(original.Id));
     }
 
     public static void DeleteConnection(Guid id)
@@ -154,6 +176,7 @@ public static partial class LibraryService
             throw new BusinessException("Diese Verbindung gibt es nicht mehr.");
         }
 
+        SshKeys.Store(id, "");
         Raise();
     }
 

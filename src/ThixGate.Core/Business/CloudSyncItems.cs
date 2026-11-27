@@ -137,6 +137,7 @@ internal static class CloudSyncItems
         if (item.IsDeleted || item.Data is null)
         {
             Remove(SyncCollections.Connections, id, item.UpdatedAt, library => library.Connections.RemoveAll(connection => connection.Id == id));
+            SshKeys.Store(id, ""); // the key stored here goes with it
             return;
         }
 

@@ -21,7 +21,8 @@ public static class SessionLauncher
             return;
         }
 
-        if (connection.Protocol == ConnectionProtocol.Ssh && SettingsService.Get().SshInSystemTerminal)
+        // A pasted key never goes to another program (it would have to be a file or on a command line): such a connection opens here.
+        if (connection.Protocol == ConnectionProtocol.Ssh && SettingsService.Get().SshInSystemTerminal && !SshKeys.IsStored(connection.Id))
         {
             await SshLauncher.OpenAsync(connection);
             return;

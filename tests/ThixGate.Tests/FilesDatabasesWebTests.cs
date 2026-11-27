@@ -19,6 +19,17 @@ public sealed class FilesDatabasesWebTests
     // ================================================================= the model
 
     [Fact]
+    public void Select_top_rows_is_written_as_management_studio_writes_it()
+    {
+        Assert.Equal("SELECT TOP (100) [Id]\n      ,[Name]\n  FROM [dbo].[Kunden]", DatabaseSession.SelectTop(DatabaseEngine.MsSql, "dbo", "Kunden", ["Id", "Name"]));
+        Assert.Equal("SELECT \"id\"\n  FROM \"public\".\"kunden\"\n LIMIT 100", DatabaseSession.SelectTop(DatabaseEngine.Postgres, "public", "kunden", ["id"]));
+        var mysql = DatabaseSession.SelectTop(DatabaseEngine.MySql, "shop", "kunden", []);
+        Assert.StartsWith("SELECT *\n  FROM ", mysql);
+        Assert.EndsWith("`kunden`\n LIMIT 100", mysql);
+        Assert.Equal("SELECT [Id]\n  FROM [dbo].[Kunden]", DatabaseSession.SelectTop(DatabaseEngine.MsSql, "dbo", "Kunden", ["Id"], count: null));
+    }
+
+    [Fact]
     public void A_website_keeps_its_address_and_takes_host_and_port_from_it()
     {
         using var data = new TestData();
