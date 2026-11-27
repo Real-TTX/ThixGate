@@ -78,6 +78,24 @@ public sealed partial class UiTests
         Assert.Equal(["Menü der Sitzung", "Minimieren", "Vollbild beenden", "Trennen"], names);
         Assert.Contains(view.FullBar.GetLogicalDescendants().OfType<TextBlock>(), text => text.Text == "Terminalserver");
 
+        // The pointer stays on it or just below (on macOS: the menu bar took it there): it stays; further down it goes.
+        view.TrackPointer(20);
+        view.HideBarIfAway();
+        Assert.True(view.IsFullBarShown);
+        view.TrackPointer(400);
+        view.HideBarIfAway();
+        Assert.False(view.IsFullBarShown);
+        Assert.True(view.IsHandleShown);
+
+        // A quick move to the top does not bring it; resting there does.
+        view.TrackPointer(0);
+        Assert.True(view.IsRevealPending);
+        view.TrackPointer(300);
+        Assert.False(view.IsRevealPending);
+        view.TrackPointer(3);
+        Assert.True(view.IsRevealPending);
+        Assert.False(view.IsFullBarShown);
+
         view.IsFullScreen = false;
         Assert.False(view.IsFullBarShown);
         Assert.False(view.IsHandleShown);

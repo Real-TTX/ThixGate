@@ -140,11 +140,7 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
         };
         _surface.SizeChanged += (_, _) => RememberSize();
 
-        _surface.PointerMoved += (_, e) =>
-        {
-            PointerNearTop(e);
-            Pointer(e);
-        };
+        _surface.PointerMoved += (_, e) => Pointer(e);
         _surface.PointerPressed += (_, e) =>
         {
             if (!IsScreen)
@@ -190,6 +186,8 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
             {
                 window.Activated -= WindowActivated;
             }
+
+            (e.Root as Avalonia.Interactivity.Interactive)?.RemoveHandler(PointerMovedEvent, WindowPointerMoved);
         };
         AttachedToVisualTree += (_, e) =>
         {
@@ -200,6 +198,8 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
                 window.Activated += WindowActivated;
             }
 
+            // The full-screen bar follows the pointer anywhere in the window - also where the picture, the bar or a panel handles it.
+            (e.Root as Avalonia.Interactivity.Interactive)?.AddHandler(PointerMovedEvent, WindowPointerMoved, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
 
             // The first time it is shown the session starts; moving between a tab and a window only shows it elsewhere.
             RememberSize();
