@@ -41,6 +41,7 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
     private readonly Button _dock = new();
     private readonly Button _disconnect = Ui.Button("power", "Trennen", "MatButton.Danger");
     private readonly DispatcherTimer _resizeTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
+    private int _resizeTries;
     private readonly HashSet<PhysicalKey> _keysDown = [];
     private bool _pasting;
     private bool _pasteReleased;
@@ -135,6 +136,14 @@ public sealed partial class SessionView : UserControl, IScreenHost, ISshHost
         _resizeTimer.Tick += (_, _) =>
         {
             _resizeTimer.Stop();
+            if (!_isConnected && _run is { IsCancellationRequested: false } && ++_resizeTries < 150)
+            {
+                // The window changed (full screen, a span) while the session still connects: the size goes there once it is connected.
+                _resizeTimer.Start();
+                return;
+            }
+
+            _resizeTries = 0;
             if (_isConnected && _resolution == "auto")
             {
                 _backend?.Resize(_wantedWidth, _wantedHeight);
