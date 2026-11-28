@@ -17,6 +17,9 @@ public static class SessionHub
     private static readonly List<SessionView> Views = [];
     private static readonly Dictionary<SessionView, SessionWindow> InWindows = [];
 
+    /// <summary>Sessions in full screen that came from their tab: leaving full screen docks them again.</summary>
+    private static readonly HashSet<SessionView> FromTab = [];
+
     /// <summary>A session opened, ended, moved or changed its state (title bar, tray).</summary>
     public static event EventHandler? Changed;
 
@@ -70,7 +73,7 @@ public static class SessionHub
             return existing;
         }
 
-        Main?.RemoveSessionTab(view);
+        LeaveTab(view);
         return ToWindow(view);
     }
 
@@ -124,6 +127,7 @@ public static class SessionHub
     {
         view.Shutdown();
         InWindows.Remove(view);
+        FromTab.Remove(view);
         if (Views.Remove(view))
         {
             Changed?.Invoke(null, EventArgs.Empty);
@@ -154,22 +158,33 @@ public static class SessionHub
                 return;
             }
 
+            FromTab.Remove(view);
             window.HandOver();
             Dock(view, main);
             main.ShowFromTray();
             return;
         }
 
-        Main?.RemoveSessionTab(view);
+        LeaveTab(view);
         ToWindow(view);
     }
 
-    /// <summary>Full screen: a window of its own in full screen (a tab moves into it); again: the window leaves full screen.</summary>
-    private static void FullScreen(SessionView view)
+    /// <summary>
+    /// Full screen: a window of its own in full screen (a tab moves into it); again: the window leaves full screen - and a session that
+    /// came from its tab goes back there.
+    /// </summary>
+    internal static void FullScreen(SessionView view)
     {
         var monitors = SessionDisplay.MonitorsFor(view.Connection, AvailableMonitors());
         if (InWindows.TryGetValue(view, out var window))
         {
+            var isFull = window.Spanned.Count > 0 || window.WindowState == WindowState.FullScreen;
+            if (isFull && FromTab.Remove(view) && Main is not null)
+            {
+                MoveDockOrWindow(view);
+                return;
+            }
+
             // Back over its monitors when it has some, else full screen on and off.
             if (window.Spanned.Count == 0 && window.WindowState != WindowState.FullScreen && monitors.Count > 0)
             {
@@ -183,7 +198,12 @@ public static class SessionHub
             return;
         }
 
-        Main?.RemoveSessionTab(view);
+        if (Main is not null)
+        {
+            FromTab.Add(view);
+        }
+
+        LeaveTab(view);
         var created = ToWindow(view);
         if (monitors.Count > 0)
         {
@@ -206,6 +226,22 @@ public static class SessionHub
         return top is Window { Screens: { } screens }
             ? [.. screens.All.Select(screen => new ScreenMonitor(screen.Bounds.X, screen.Bounds.Y, screen.Bounds.Width, screen.Bounds.Height, screen.IsPrimary))]
             : [];
+    }
+
+    /// <summary>
+    /// The session leaves its tab for a window. The main window's layout runs once right away: it may still hold the session's parts
+    /// for its next pass, and running that pass after they moved into the other window makes Avalonia throw ("Attempt to call
+    /// InvalidateArrange on wrong LayoutManager") - the window then stays half laid out.
+    /// </summary>
+    private static void LeaveTab(SessionView view)
+    {
+        if (Main is not { } main)
+        {
+            return;
+        }
+
+        main.RemoveSessionTab(view);
+        main.UpdateLayout();
     }
 
     private static void Dock(SessionView view, MainWindow main)

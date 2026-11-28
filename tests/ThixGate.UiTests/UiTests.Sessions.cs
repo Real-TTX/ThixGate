@@ -13,6 +13,51 @@ namespace ThixGate.UiTests;
 public sealed partial class UiTests
 {
     [AvaloniaFact]
+    public void Full_screen_from_a_tab_fills_a_window_and_docks_back()
+    {
+        using var data = new TestData();
+        SettingsService.Update(settings => settings with { OpenSessionIn = OpenSessionIn.Tab, ConfirmCloseSession = false });
+        var connection = LibraryService.SaveConnection(new RemoteConnection { Name = "Terminalserver", Host = "127.0.0.1", Port = 1 });
+        var window = Open();
+        try
+        {
+            var view = SessionHub.Open(connection);
+            Settle(window);
+            Assert.Same(view, window.ShownSession);
+
+            // "Vollbild" in the tab: a window of its own in full screen, laid out without an error (Avalonia threw "wrong LayoutManager"
+            // when the main window still held the session's parts), with the connection bar instead of the bars above and below.
+            SessionHub.FullScreen(view);
+            Settle(window);
+            var full = Assert.Single(SessionWindow.OpenSessions);
+            Settle(full);
+            Assert.Equal(WindowState.FullScreen, full.WindowState);
+            Assert.True(view.IsFullScreen);
+            Assert.False(view.StatusBar.IsVisible);
+            Assert.Same(full, TopLevel.GetTopLevel(view));
+            Assert.Single(window.SessionTabs);
+            Assert.Equal(full.Bounds.Size, view.Bounds.Size);
+            view.RevealBarNow();
+            Settle(full);
+            Assert.True(view.IsFullBarShown);
+
+            // "Vollbild beenden": back in its tab.
+            SessionHub.FullScreen(view);
+            Settle(window);
+            Assert.Empty(SessionWindow.OpenSessions);
+            Assert.Same(view, window.ShownSession);
+            Assert.Same(window, TopLevel.GetTopLevel(view));
+            Assert.False(view.IsFullScreen);
+            Assert.Equal(2, window.SessionTabs.Count);
+        }
+        finally
+        {
+            SessionHub.CloseAll();
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void The_display_tab_of_a_remote_desktop_has_monitors_and_drives()
     {
         using var data = new TestData();

@@ -121,7 +121,7 @@ src/ThixGate            (Avalonia app)
                         the way it goes, .FullScreen the connection bar as in Microsoft's Windows App (flush at the top edge,
                         menu + name + Minimieren/Vollbild beenden/Trennen; hidden until the pointer rests at the edge or touches the grip - the pointer is followed in the whole window, the bar stays while it is on or just below it - or always); AudioPlayer plays the sound:
                         waveOut on Windows, AudioQueue on macOS), SessionMessages (the engine's English errors in German), the message and "Neu verbinden" as a card in the middle of the picture; SessionHub (where a session is: a tab right of the menu (default, like Royal TS) or a
-                        SessionWindow; Abdocken/Andocken moves it without ending it; full screen = a window; over several monitors = a
+                        SessionWindow; Abdocken/Andocken moves it without ending it - the window it leaves lays out first, else Avalonia throws "wrong LayoutManager"; full screen = a window, from a tab back into its tab when it ends; over several monitors = a
                         frameless window spanning them in pixels, again when the scaling changes, the bar in the middle of the main monitor; one chosen monitor = the system's full screen on it; SessionWindow.Span), KeyMap (PhysicalKey → scancode for RDP, keysym for VNC), SessionLauncher, NullScreenHost
   Controls/             ONE code base per control: LibraryNav (the menu) + ConnectionTree (the library as folders and connections, LibraryService.Tree),
                         ListLayout<T> (THE list page), EditLayout (THE create/update page), ListToolbar,

@@ -172,6 +172,8 @@ public sealed class SessionWindow : Window
         View.MinimizeRequested -= Minimize;
         View.IsFullScreen = false;
         Content = null;
+        // This window's layout pass runs now, before the session is laid out in the main window (else Avalonia throws: wrong LayoutManager).
+        UpdateLayout();
         Close();
     }
 
